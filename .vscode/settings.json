@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^cd \"d:/AllProjects/MCQ-Master-App\" ; node -e \"require\\('\\./apps/api/src/services/questionImport\\.service'\\)\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

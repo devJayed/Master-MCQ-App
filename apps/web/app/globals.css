@@ -1,0 +1,42 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&family=Noto+Serif+Bengali:wght@600;700&display=swap');
+@import 'tailwindcss';
+@plugin "daisyui";
+
+@plugin "daisyui/theme" {
+  name: 'jayed';
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: #ffffff;
+  --color-base-200: #f7f8f4;
+  --color-base-300: #e7ebe5;
+  --color-base-content: #183144;
+  --color-primary: #116d68;
+  --color-primary-content: #ffffff;
+  --color-secondary: #e7f2ed;
+  --color-accent: #e66f5b;
+  --color-neutral: #183144;
+  --radius-box: 0.85rem;
+}
+
+@theme {
+  --font-display: 'Georgia', 'Times New Roman', serif;
+}
+body {
+  min-height: 100vh;
+  background: #f7f8f4;
+  font-family: 'Noto Sans Bengali', 'Inter', sans-serif;
+}
+.font-display {
+  font-family: 'Noto Serif Bengali', var(--font-display);
+}
+[data-language='en'] body {
+  font-family: 'Inter', sans-serif;
+}
+[data-language='en'] .font-display {
+  font-family: var(--font-display);
+}
+.soft-grid {
+  background-image: radial-gradient(#116d6812 1px, transparent 1px);
+  background-size: 18px 18px;
+}

@@ -1,0 +1,18 @@
+{
+  "name": "MCQ-Master-App",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w @jayed/web\" \"npm run dev -w @jayed/api\"",
+    "build": "npm run build -w @jayed/web",
+    "start": "concurrently \"npm run start -w @jayed/web\" \"npm run start -w @jayed/api\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "prettier": "^3.5.3"
+  }
+}

@@ -1,0 +1,5 @@
+'use client';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+import { api } from '../../lib/api';
+export default function ResetPassword() { const router = useRouter(), [error, setError] = useState(''); const submit = async (e) => { e.preventDefault(); try { await api('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token: new URLSearchParams(window.location.search).get('token'), password: new FormData(e.currentTarget).get('password') }) }); router.replace('/login'); } catch (x) { setError(x.message); } }; return <main className="mx-auto max-w-md p-6 pt-20"><form onSubmit={submit} className="card card-body border border-base-300 bg-base-100"><h1 className="font-display text-3xl font-bold">Choose a new password</h1><input required minLength="8" type="password" name="password" className="input input-bordered" placeholder="At least 8 characters" />{error && <p className="text-sm text-error">{error}</p>}<button className="btn btn-primary">Reset password</button></form></main>; }
