@@ -23,6 +23,7 @@ app.use('/api/subtopics', require('./routes/subtopic.routes'));
 app.use('/api/syllabus', require('./routes/syllabus.routes'));
 app.use('/api/questions', require('./routes/question.routes'));
 app.use('/api/attempts', require('./routes/attempt.routes'));
+app.use('/api/reports', require('./routes/report.routes'));
 app.use('/api/analytics', require('./routes/analytics.routes'));
 app.use((err, req, res, next) => {
   console.error(err);

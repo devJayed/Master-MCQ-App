@@ -50,6 +50,7 @@ const questionSchema = new mongoose.Schema(
 );
 
 questionSchema.index({ chapterId: 1, topicId: 1, subtopicId: 1, status: 1, isDeleted: 1 });
+questionSchema.index({ isDeleted: 1, updatedAt: -1 });
 
 questionSchema.pre('validate', function validatePublishedBilingualContent(next) {
   if (this.status !== 'published') return next();

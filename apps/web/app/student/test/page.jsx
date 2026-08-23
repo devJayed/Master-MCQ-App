@@ -13,6 +13,7 @@ const shuffle = (items) => {
   }
   return next;
 };
+const copy = (language, bangla, english) => (language === 'bn' ? bangla : english);
 
 function TestContent() {
   const router = useRouter();
@@ -23,10 +24,13 @@ function TestContent() {
   const [answers, setAnswers] = useState([]);
   const [seconds, setSeconds] = useState(600);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submissionKey] = useState(() =>
-    typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random()}`
   );
 
   useEffect(() => {
@@ -50,7 +54,10 @@ function TestContent() {
       .then((response) => {
         const safeResults = response.data || [];
         const requestedCount = Math.max(1, Number(params.get('count') || 20));
-        const selected = shuffle(safeResults).slice(0, Math.min(requestedCount, safeResults.length));
+        const selected = shuffle(safeResults).slice(
+          0,
+          Math.min(requestedCount, safeResults.length)
+        );
         setQuestions(selected);
         setAnswers(new Array(selected.length).fill(undefined));
         const configuredSeconds = Number(params.get('secondsPerQuestion'));
@@ -68,9 +75,17 @@ function TestContent() {
           setSeconds(0);
         }
       })
-      .catch(() => {
+      .catch((error) => {
         setQuestions([]);
         setAnswers([]);
+        setLoadError(
+          error.message ||
+            copy(
+              language,
+              'পরীক্ষাটি প্রস্তুত করা যায়নি। আবার চেষ্টা করুন।',
+              'The exam could not be prepared. Please try again.'
+            )
+        );
       })
       .finally(() => setLoading(false));
   }, [searchParams]);
@@ -91,7 +106,11 @@ function TestContent() {
       const result = await api('/attempts', {
         method: 'POST',
         body: JSON.stringify({
-          mode: 'custom',
+          mode: ['topic', 'chapter', 'quick', 'mistakes', 'custom', 'model'].includes(
+            searchParams.get('mode')
+          )
+            ? searchParams.get('mode')
+            : 'custom',
           submissionKey,
           questionIds: questions.map((question) => question._id),
           answers: questions.map((question, itemIndex) => ({
@@ -99,7 +118,9 @@ function TestContent() {
             selectedAnswer: answers[itemIndex] || null,
           })),
           filters: Object.fromEntries(
-            [...searchParams.entries()].filter(([key]) => !['count', 'minutes', 'secondsPerQuestion'].includes(key))
+            [...searchParams.entries()].filter(
+              ([key]) => !['count', 'minutes', 'secondsPerQuestion'].includes(key)
+            )
           ),
           timeAllocatedSeconds,
           timeTakenSeconds: Math.max(0, timeAllocatedSeconds - seconds),
@@ -107,7 +128,9 @@ function TestContent() {
       });
       router.push(`/student/result?attemptId=${result.data._id}`);
     } catch (error) {
-      setSubmitError(error.message || 'Could not submit the test.');
+      setSubmitError(
+        error.message || copy(language, 'পরীক্ষা জমা দেওয়া যায়নি।', 'Could not submit the test.')
+      );
       setSubmitting(false);
     }
   };
@@ -125,7 +148,13 @@ function TestContent() {
         <div className="card border border-base-300 bg-base-100">
           <div className="card-body text-center">
             <span className="loading loading-spinner loading-lg mx-auto text-primary" />
-            <p className="mt-4 text-sm text-base-content/60">Preparing your custom test...</p>
+            <p className="mt-4 text-sm text-base-content/60">
+              {copy(
+                language,
+                'আপনার পরীক্ষা প্রস্তুত করা হচ্ছে...',
+                'Preparing your custom test...'
+              )}
+            </p>
           </div>
         </div>
       </div>
@@ -137,15 +166,24 @@ function TestContent() {
       <div className="mx-auto max-w-3xl p-5 md:p-10">
         <div className="card border border-base-300 bg-base-100">
           <div className="card-body text-center">
-            <h1 className="font-display text-3xl font-bold">No matching questions found</h1>
+            <h1 className="font-display text-3xl font-bold">
+              {loadError
+                ? copy(language, 'পরীক্ষাটি প্রস্তুত করা যায়নি', 'Could not prepare this exam')
+                : copy(language, 'কোনো মিল থাকা প্রশ্ন পাওয়া যায়নি', 'No matching questions found')}
+            </h1>
             <p className="mt-3 text-sm text-base-content/60">
-              Try widening the filters or choosing a different chapter or board.
+              {loadError ||
+                copy(
+                  language,
+                  'ফিল্টার কমিয়ে অথবা অন্য অধ্যায় বা বোর্ড বেছে আবার চেষ্টা করুন।',
+                  'Try widening the filters or choosing a different chapter or board.'
+                )}
             </p>
             <button
               className="btn btn-primary mx-auto mt-5"
               onClick={() => router.push('/student/create-test')}
             >
-              Adjust filters
+              {copy(language, 'ফিল্টার পরিবর্তন করুন', 'Adjust filters')}
             </button>
           </div>
         </div>
@@ -158,11 +196,12 @@ function TestContent() {
     <div className="mx-auto max-w-3xl p-5 md:p-10">
       <div className="mb-8 flex items-center justify-between">
         <button onClick={() => router.push('/student/dashboard')} className="btn btn-ghost btn-sm">
-          ← Exit test
+          ← {copy(language, 'পরীক্ষা থেকে বের হন', 'Exit test')}
         </button>
         <div className="w-56 text-center">
           <small>
-            Question {index + 1} of {questions.length}
+            {copy(language, 'প্রশ্ন', 'Question')} {index + 1} {copy(language, 'এর মধ্যে', 'of')}{' '}
+            {questions.length}
           </small>
           <progress
             className="progress progress-primary block w-full"
@@ -178,10 +217,16 @@ function TestContent() {
       <section className="card border border-base-300 bg-base-100">
         <div className="card-body p-6 md:p-10">
           <p className="text-[10px] font-bold tracking-widest text-primary uppercase">
-            {question.sourceType || 'Question'}
+            {question.sourceType === 'board'
+              ? copy(language, 'বোর্ড প্রশ্ন', 'Board question')
+              : question.sourceType === 'teacher'
+                ? copy(language, 'শিক্ষক প্রদত্ত প্রশ্ন', 'Teacher question')
+                : question.sourceType === 'model_test'
+                  ? copy(language, 'মডেল টেস্ট', 'Model test')
+                  : copy(language, 'অনুশীলন প্রশ্ন', 'Practice question')}
           </p>
           <h1 className="mt-2 font-display text-3xl font-bold leading-snug">
-            {question.question[language]}
+            {question.question[language] || question.question.bn || question.question.en}
           </h1>
           <div className="mt-7 space-y-3">
             {question.options.map((option) => (
@@ -193,7 +238,7 @@ function TestContent() {
                 <span className="mr-2 grid size-6 place-items-center rounded-full border border-current text-xs">
                   {option.key}
                 </span>
-                {option.text[language]}
+                {option.text[language] || option.text.bn || option.text.en}
               </button>
             ))}
           </div>
@@ -203,7 +248,7 @@ function TestContent() {
               disabled={!index}
               className="btn btn-ghost btn-sm"
             >
-              ← Previous
+              ← {copy(language, 'আগের প্রশ্ন', 'Previous')}
             </button>
             <div className="flex gap-1">
               {questions.map((_, itemIndex) => (
@@ -218,7 +263,12 @@ function TestContent() {
               disabled={submitting}
               className="btn btn-primary"
             >
-              {submitting ? 'Submitting...' : index === questions.length - 1 ? 'Finish test' : 'Next question'} →
+              {submitting
+                ? copy(language, 'জমা দেওয়া হচ্ছে...', 'Submitting...')
+                : index === questions.length - 1
+                  ? copy(language, 'পরীক্ষা শেষ করুন', 'Finish test')
+                  : copy(language, 'পরের প্রশ্ন', 'Next question')}{' '}
+              →
             </button>
           </div>
           {submitError && <p className="mt-4 text-center text-sm text-error">{submitError}</p>}
@@ -229,6 +279,7 @@ function TestContent() {
 }
 
 export default function Test() {
+  const { language } = useLanguage();
   return (
     <Suspense
       fallback={
@@ -236,7 +287,13 @@ export default function Test() {
           <div className="card border border-base-300 bg-base-100">
             <div className="card-body text-center">
               <span className="loading loading-spinner loading-lg mx-auto text-primary" />
-              <p className="mt-4 text-sm text-base-content/60">Preparing your custom test...</p>
+              <p className="mt-4 text-sm text-base-content/60">
+                {copy(
+                  language,
+                  'আপনার পরীক্ষা প্রস্তুত করা হচ্ছে...',
+                  'Preparing your custom test...'
+                )}
+              </p>
             </div>
           </div>
         </div>

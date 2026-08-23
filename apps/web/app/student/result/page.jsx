@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { useLanguage } from '../../../components/LanguageProvider';
+import ReportQuestionButton from '../../../components/ReportQuestionButton';
 import { api } from '../../../lib/api';
 
 const localText = (value, language) => value?.[language] || value?.bn || value?.en || '';
@@ -103,6 +104,7 @@ function ResultContent() {
                 >
                   {isOpen ? (language === 'bn' ? 'ব্যাখ্যা লুকান' : 'Hide explanation') : explanationLabel}
                 </button>
+                <ReportQuestionButton questionId={question.questionId} attemptId={attempt._id} questionText={localText(question.question, language)} />
                 {isOpen && <div className="rounded-box bg-base-200 p-4 text-sm leading-6"><p className="font-semibold">{explanationLabel}</p><p className="mt-1">{localText(question.explanation, language)}</p></div>}
               </div>
             </article>

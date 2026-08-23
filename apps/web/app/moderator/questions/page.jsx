@@ -4,6 +4,7 @@ import { Filter, Plus, Search, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useLanguage } from '../../../components/LanguageProvider';
+import Pagination from '../../../components/Pagination';
 import { api } from '../../../lib/api';
 
 export default function ModeratorQuestions() {
@@ -16,6 +17,10 @@ export default function ModeratorQuestions() {
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   const name = (item) => item?.name?.[language] || item?.name?.bn || '—';
 
@@ -24,13 +29,20 @@ export default function ModeratorQuestions() {
     if (chapterId) query.set('chapterId', chapterId);
     if (topicId) query.set('topicId', topicId);
     if (search) query.set('search', search);
+    query.set('page', String(page));
+    query.set('pageSize', String(pageSize));
 
     try {
+      setLoading(true);
       const result = await api(`/questions/manage?${query}`);
       setQuestions(result.data || []);
+      setTotal(result.pagination?.total || 0);
+      if (result.pagination?.page && result.pagination.page !== page) setPage(result.pagination.page);
       setError('');
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -54,7 +66,11 @@ export default function ModeratorQuestions() {
 
   useEffect(() => {
     loadQuestions();
-  }, [chapterId, topicId, search]);
+  }, [chapterId, topicId, search, page, pageSize]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [chapterId, topicId, search, pageSize]);
 
   const handleDelete = async (questionId) => {
     const confirmed = window.confirm(
@@ -66,7 +82,8 @@ export default function ModeratorQuestions() {
     try {
       const result = await api(`/questions/${questionId}`, { method: 'DELETE' });
       setNotice(result?.message || 'Question archived successfully.');
-      setQuestions((current) => current.filter((question) => question._id !== questionId));
+      if (questions.length === 1 && page > 1) setPage((current) => current - 1);
+      else loadQuestions();
       setError('');
     } catch (err) {
       setError(err.message);
@@ -122,7 +139,8 @@ export default function ModeratorQuestions() {
       {error && <p className="mt-3 text-sm text-error">{error}</p>}
       {notice && <p className="mt-3 text-sm text-success">{notice}</p>}
 
-      <div className="mt-5 overflow-x-auto rounded-box border border-base-300 bg-base-100">
+      <div className="mt-5 rounded-box border border-base-300 bg-base-100 shadow-sm">
+        <div className="overflow-x-auto">
         <table className="table">
           <thead>
             <tr>
@@ -171,7 +189,7 @@ export default function ModeratorQuestions() {
                 </td>
               </tr>
             ))}
-            {!questions.length && (
+            {!loading && !questions.length && (
               <tr>
                 <td colSpan="5" className="text-center text-base-content/60">
                   No questions found.
@@ -180,6 +198,17 @@ export default function ModeratorQuestions() {
             )}
           </tbody>
         </table>
+        </div>
+        {loading && <p className="border-t border-base-300 p-6 text-center text-sm text-base-content/60">Loading questions…</p>}
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          language={language}
+          disabled={loading}
+        />
       </div>
     </div>
   );

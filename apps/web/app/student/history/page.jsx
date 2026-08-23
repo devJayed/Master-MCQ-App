@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useLanguage } from '../../../components/LanguageProvider';
 import ProtectedRoute from '../../../components/ProtectedRoute';
+import Pagination from '../../../components/Pagination';
 import { api } from '../../../lib/api';
 
 const formatDate = (value, language) =>
@@ -23,13 +24,24 @@ function HistoryContent() {
   const [attempts, setAttempts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
-    api('/attempts/me')
-      .then((result) => setAttempts(result.data || []))
+    setLoading(true);
+    api(`/attempts/me?page=${page}&pageSize=${pageSize}`)
+      .then((result) => {
+        setAttempts(result.data || []);
+        setTotal(result.pagination?.total || 0);
+        setError('');
+        if (result.pagination?.page && result.pagination.page !== page) setPage(result.pagination.page);
+      })
       .catch((requestError) => setError(requestError.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [page, pageSize]);
+
+  useEffect(() => setPage(1), [pageSize]);
 
   return (
     <div className="mx-auto max-w-6xl p-5 md:p-10">
@@ -42,7 +54,8 @@ function HistoryContent() {
       {!loading && !error && !attempts.length && <div className="mt-8 rounded-box border border-dashed border-base-300 p-10 text-center text-sm text-base-content/60">{language === 'bn' ? 'এখনও কোনো টেস্ট জমা দেওয়া হয়নি।' : 'No submitted tests yet.'}</div>}
 
       {!loading && !error && attempts.length > 0 && (
-        <div className="mt-7 overflow-x-auto rounded-box border border-base-300 bg-base-100 shadow-sm">
+        <div className="mt-7 rounded-box border border-base-300 bg-base-100 shadow-sm">
+          <div className="overflow-x-auto">
           <table className="table">
             <thead>
               <tr>
@@ -67,6 +80,16 @@ function HistoryContent() {
               ))}
             </tbody>
           </table>
+          </div>
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            language={language}
+            disabled={loading}
+          />
         </div>
       )}
     </div>

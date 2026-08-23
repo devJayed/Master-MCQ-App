@@ -95,11 +95,21 @@ router.post('/', protect, async (req, res, next) => {
 });
 router.get('/me', protect, async (req, res, next) => {
   try {
+    const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
+    const pageSize = [10, 20, 30, 40, 50].includes(Number(req.query.pageSize))
+      ? Number(req.query.pageSize)
+      : 10;
+    const filter = { studentId: req.user._id };
+    const total = await Attempt.countDocuments(filter);
+    const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+    const currentPage = Math.min(page, totalPages);
     res.json({
-      data: await Attempt.find({ studentId: req.user._id })
-        .sort('-createdAt')
-        .limit(50)
+      data: await Attempt.find(filter)
+        .sort('-submittedAt')
+        .skip((currentPage - 1) * pageSize)
+        .limit(pageSize)
         .populate('chapterIds', 'title'),
+      pagination: { page: currentPage, pageSize, total, totalPages },
     });
   } catch (e) {
     next(e);

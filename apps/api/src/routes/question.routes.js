@@ -96,11 +96,19 @@ router.get('/manage', protect, allow('teacher', 'moderator'), async (req, res, n
         { tags: { $regex: req.query.search, $options: 'i' } },
       ];
     }
+    const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
+    const pageSize = [10, 20, 30, 40, 50].includes(Number(req.query.pageSize))
+      ? Number(req.query.pageSize)
+      : 10;
+    const total = await Question.countDocuments(filter);
+    const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+    const currentPage = Math.min(page, totalPages);
     const data = await Question.find(filter)
       .populate('chapterId topicId subtopicId', 'name')
       .sort('-updatedAt')
-      .limit(Math.min(Number(req.query.limit) || 100, 100));
-    res.json({ data });
+      .skip((currentPage - 1) * pageSize)
+      .limit(pageSize);
+    res.json({ data, pagination: { page: currentPage, pageSize, total, totalPages } });
   } catch (error) {
     next(error);
   }
