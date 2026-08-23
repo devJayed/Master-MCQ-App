@@ -48,7 +48,7 @@ function LocalizedField({ label, value, onChange, multiline = false, required = 
   );
 }
 
-export function QuestionEditor({ questionId }) {
+export function QuestionEditor({ questionId, basePath = '/moderator/questions' }) {
   const router = useRouter();
   const { language } = useLanguage();
   const [form, setForm] = useState(initialForm);
@@ -132,7 +132,7 @@ export function QuestionEditor({ questionId }) {
         method: questionId ? 'PATCH' : 'POST',
         body: JSON.stringify(payload),
       });
-      router.push('/moderator/questions');
+      router.push(basePath);
     } catch (error) {
       setMessage(error.message || 'Could not save question.');
     } finally {

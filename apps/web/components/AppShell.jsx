@@ -64,6 +64,8 @@ const roleConfig = {
       ['/teacher/dashboard', 'Dashboard', LayoutDashboard],
       ['/teacher/students', 'Students', Users],
       ['/teacher/questions', 'Question Bank', FileQuestion],
+      ['/teacher/questions/create', 'Add Question', FilePlus2],
+      ['/teacher/questions/import', 'Import Questions', FileSpreadsheet],
       ['/teacher/syllabus', 'Syllabus', BookOpen],
       ['/teacher/analytics', 'Analytics', ChartNoAxesCombined],
     ],

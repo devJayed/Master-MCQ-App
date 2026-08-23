@@ -84,23 +84,33 @@ router.get('/', async (req, res, next) => {
 
 router.get('/manage', protect, allow('teacher', 'moderator'), async (req, res, next) => {
   try {
-    const filter = { isDeleted: false };
+    const showArchived = req.query.archived === 'true' && req.user.role === 'teacher';
+    const filter = showArchived ? { isDeleted: true } : { isDeleted: false };
     if (req.query.status) filter.status = req.query.status;
     if (req.query.chapterId) filter.chapterId = req.query.chapterId;
     if (req.query.topicId) filter.topicId = req.query.topicId;
     if (req.query.subtopicId) filter.subtopicId = req.query.subtopicId;
     if (req.query.search) {
+      const search = String(req.query.search)
+        .slice(0, 100)
+        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filter.$or = [
-        { 'question.bn': { $regex: req.query.search, $options: 'i' } },
-        { 'question.en': { $regex: req.query.search, $options: 'i' } },
-        { tags: { $regex: req.query.search, $options: 'i' } },
+        { 'question.bn': { $regex: search, $options: 'i' } },
+        { 'question.en': { $regex: search, $options: 'i' } },
+        { tags: { $regex: search, $options: 'i' } },
       ];
     }
     const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
     const pageSize = [10, 20, 30, 40, 50].includes(Number(req.query.pageSize))
       ? Number(req.query.pageSize)
       : 10;
-    const total = await Question.countDocuments(filter);
+    const [total, statusCounts] = await Promise.all([
+      Question.countDocuments(filter),
+      Question.aggregate([
+        { $match: { isDeleted: showArchived } },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+    ]);
     const totalPages = Math.max(Math.ceil(total / pageSize), 1);
     const currentPage = Math.min(page, totalPages);
     const data = await Question.find(filter)
@@ -108,7 +118,9 @@ router.get('/manage', protect, allow('teacher', 'moderator'), async (req, res, n
       .sort('-updatedAt')
       .skip((currentPage - 1) * pageSize)
       .limit(pageSize);
-    res.json({ data, pagination: { page: currentPage, pageSize, total, totalPages } });
+    const summary = { total: 0, draft: 0, published: 0, archived: 0 };
+    statusCounts.forEach(({ _id, count }) => { summary[_id] = count; summary.total += count; });
+    res.json({ data, summary, pagination: { page: currentPage, pageSize, total, totalPages } });
   } catch (error) {
     next(error);
   }
@@ -218,6 +230,20 @@ router.post('/translate', protect, allow('teacher', 'moderator'), async (req, re
     res
       .status(502)
       .json({ message: error.message || 'English translation failed. Publishing is blocked.' });
+  }
+});
+
+router.patch('/:id/restore', protect, allow('teacher'), async (req, res, next) => {
+  try {
+    const data = await Question.findOneAndUpdate(
+      { _id: req.params.id, isDeleted: true },
+      { isDeleted: false, status: 'draft', updatedBy: req.user._id },
+      { new: true, runValidators: true }
+    );
+    if (!data) return res.status(404).json({ message: 'Archived question not found.' });
+    res.json({ data, message: 'Question restored as a draft.' });
+  } catch (error) {
+    next(error);
   }
 });
 

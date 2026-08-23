@@ -24,7 +24,7 @@ router.post('/', protect, allow('student'), async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.get('/', protect, allow('moderator'), async (req, res, next) => {
+router.get('/', protect, allow('moderator', 'teacher'), async (req, res, next) => {
   try {
     const filter = {};
     if (STATUSES.includes(req.query.status)) filter.status = req.query.status;
@@ -61,7 +61,7 @@ router.get('/', protect, allow('moderator'), async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.patch('/:id', protect, allow('moderator'), async (req, res, next) => {
+router.patch('/:id', protect, allow('moderator', 'teacher'), async (req, res, next) => {
   try {
     const { status, resolutionNote = '' } = req.body;
     if (!STATUSES.includes(status)) return res.status(400).json({ message: 'Select a valid report status.' });

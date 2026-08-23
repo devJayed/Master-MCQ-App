@@ -161,20 +161,18 @@ router.get('/student', protect, async (req, res, next) => {
       accuracy: stats.totalQuestions ? (stats.correctAnswers / stats.totalQuestions) * 100 : 0,
       averageScore: stats.totalMarks ? (stats.marksObtained / stats.totalMarks) * 100 : 0,
     }));
-    const recent = attempts
-      .slice(0, 8)
-      .map((attempt) => ({
-        id: attempt._id,
-        mode: attempt.mode,
-        submittedAt: attempt.submittedAt || attempt.createdAt,
-        totalQuestions:
-          Number(attempt.totalQuestions) ||
-          attempt.answers?.length ||
-          attempt.questionSnapshots?.length ||
-          0,
-        scorePercent: Number(attempt.scorePercent) || 0,
-        timeTakenSeconds: Number(attempt.timeTakenSeconds ?? attempt.durationSeconds) || 0,
-      }));
+    const recent = attempts.slice(0, 8).map((attempt) => ({
+      id: attempt._id,
+      mode: attempt.mode,
+      submittedAt: attempt.submittedAt || attempt.createdAt,
+      totalQuestions:
+        Number(attempt.totalQuestions) ||
+        attempt.answers?.length ||
+        attempt.questionSnapshots?.length ||
+        0,
+      scorePercent: Number(attempt.scorePercent) || 0,
+      timeTakenSeconds: Number(attempt.timeTakenSeconds ?? attempt.durationSeconds) || 0,
+    }));
     const trend = [...attempts]
       .reverse()
       .slice(-30)
@@ -219,15 +217,148 @@ router.get('/student', protect, async (req, res, next) => {
     next(e);
   }
 });
+router.get('/teacher/students', protect, allow('teacher'), async (req, res, next) => {
+  try {
+    const [students, attemptStats] = await Promise.all([
+      User.find({ role: 'student' })
+        .select('name nameEnglish nameBangla email isActive createdAt')
+        .sort({ createdAt: -1 })
+        .lean(),
+      Attempt.aggregate([
+        {
+          $group: {
+            _id: '$studentId',
+            attempts: { $sum: 1 },
+            averageScore: { $avg: '$scorePercent' },
+            lastAttemptAt: { $max: '$submittedAt' },
+          },
+        },
+      ]),
+    ]);
+    const statsByStudent = Object.fromEntries(
+      attemptStats.map((item) => [String(item._id), item])
+    );
+    res.json({
+      data: students.map((student) => {
+        const stats = statsByStudent[String(student._id)] || {};
+        return {
+          ...student,
+          attempts: Number(stats.attempts) || 0,
+          averageScore: Math.round(Number(stats.averageScore) || 0),
+          lastAttemptAt: stats.lastAttemptAt || null,
+        };
+      }),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
 router.get('/teacher', protect, allow('teacher'), async (req, res, next) => {
   try {
-    const [students, questions, published, attempts] = await Promise.all([
-      User.countDocuments({ role: 'student' }),
-      Question.countDocuments({ isDeleted: false }),
-      Question.countDocuments({ status: 'published', isDeleted: false }),
-      Attempt.countDocuments(),
-    ]);
-    res.json({ data: { students, questions, published, attempts } });
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - 7);
+    const [students, activeStudents, questions, published, attempts, recentAttempts] =
+      await Promise.all([
+        User.countDocuments({ role: 'student' }),
+        User.countDocuments({ role: 'student', isActive: true }),
+        Question.countDocuments({ isDeleted: false }),
+        Question.countDocuments({ status: 'published', isDeleted: false }),
+        Attempt.find()
+          .select('studentId submittedAt createdAt scorePercent totalQuestions correctCount wrongCount unansweredCount questionSnapshots')
+          .sort({ submittedAt: -1 })
+          .lean(),
+        Attempt.find()
+          .select('studentId submittedAt createdAt scorePercent totalQuestions mode')
+          .populate('studentId', 'name nameEnglish nameBangla email')
+          .sort({ submittedAt: -1 })
+          .limit(6)
+          .lean(),
+      ]);
+    const scoreOf = (attempt) => Number(attempt.scorePercent) || 0;
+    const averageScore = attempts.length
+      ? Math.round(attempts.reduce((sum, attempt) => sum + scoreOf(attempt), 0) / attempts.length)
+      : 0;
+    const weeklyAttempts = attempts.filter(
+      (attempt) => new Date(attempt.submittedAt || attempt.createdAt) >= weekStart
+    );
+    const dayKey = (value) => {
+      const date = new Date(value);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    };
+    const dailyActivity = Array.from({ length: 7 }, (_, offset) => {
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() - (6 - offset));
+      const key = dayKey(date);
+      const items = weeklyAttempts.filter(
+        (attempt) => dayKey(attempt.submittedAt || attempt.createdAt) === key
+      );
+      return {
+        date: key,
+        attempts: items.length,
+        averageScore: items.length
+          ? Math.round(items.reduce((sum, attempt) => sum + scoreOf(attempt), 0) / items.length)
+          : 0,
+      };
+    });
+    const scoreDistribution = [
+      { key: 'excellent', min: 80, max: 101 },
+      { key: 'developing', min: 60, max: 80 },
+      { key: 'needsSupport', min: 0, max: 60 },
+    ].map((range) => ({
+      key: range.key,
+      count: attempts.filter((attempt) => {
+        const score = scoreOf(attempt);
+        return score >= range.min && score < range.max;
+      }).length,
+    }));
+    const chapterMap = {};
+    attempts.forEach((attempt) =>
+      (attempt.questionSnapshots || []).forEach((snapshot) => {
+        const id = String(snapshot.chapterId || '');
+        if (!id) return;
+        const item = (chapterMap[id] ||= {
+          chapterId: id,
+          name: snapshot.chapterName,
+          attempted: 0,
+          correct: 0,
+        });
+        item.attempted += 1;
+        if (snapshot.status === 'correct') item.correct += 1;
+      })
+    );
+    const chapterPerformance = Object.values(chapterMap)
+      .map((chapter) => ({
+        ...chapter,
+        accuracy: chapter.attempted ? Math.round((chapter.correct / chapter.attempted) * 100) : 0,
+      }))
+      .sort((a, b) => a.accuracy - b.accuracy)
+      .slice(0, 5);
+    res.json({
+      data: {
+        students,
+        activeStudents,
+        questions,
+        published,
+        attempts: attempts.length,
+        averageScore,
+        weeklyAttempts: weeklyAttempts.length,
+        weeklyActiveStudents: new Set(weeklyAttempts.map((attempt) => String(attempt.studentId)))
+          .size,
+        publishRate: questions ? Math.round((published / questions) * 100) : 0,
+        dailyActivity,
+        scoreDistribution,
+        chapterPerformance,
+        recentAttempts: recentAttempts.map((attempt) => ({
+          id: attempt._id,
+          student: attempt.studentId,
+          submittedAt: attempt.submittedAt || attempt.createdAt,
+          scorePercent: scoreOf(attempt),
+          totalQuestions: Number(attempt.totalQuestions) || 0,
+          mode: attempt.mode,
+        })),
+      },
+    });
   } catch (e) {
     next(e);
   }
@@ -250,33 +381,37 @@ router.get('/moderator', protect, allow('moderator', 'teacher'), async (req, res
       recentReports,
       resolutionTimes,
     ] = await Promise.all([
-        Question.countDocuments({ isDeleted: false }),
-        Question.countDocuments({ status: 'published', isDeleted: false }),
-        Question.countDocuments({ status: 'draft', isDeleted: false }),
-        Question.countDocuments({ status: 'archived', isDeleted: false }),
-        QuestionReport.countDocuments({ status: 'open' }),
-        QuestionReport.countDocuments({ status: 'in_review' }),
-        QuestionReport.countDocuments({ status: 'resolved' }),
-        Question.countDocuments({ isDeleted: false, updatedAt: { $gte: weekStart } }),
-        QuestionReport.countDocuments({ status: 'resolved', reviewedAt: { $gte: weekStart } }),
-        Question.find({ isDeleted: false })
-          .select('question status difficulty updatedAt createdAt chapterId topicId')
-          .populate('chapterId topicId', 'name')
-          .sort('-updatedAt')
-          .limit(5)
-          .lean(),
-        QuestionReport.find({ status: { $in: ['open', 'in_review'] } })
-          .select('questionId type status createdAt')
-          .populate('questionId', 'question')
-          .sort('-createdAt')
-          .limit(5)
-          .lean(),
-        QuestionReport.aggregate([
-          { $match: { status: 'resolved', reviewedAt: { $ne: null }, createdAt: { $gte: weekStart } } },
-          { $project: { hours: { $divide: [{ $subtract: ['$reviewedAt', '$createdAt'] }, 3600000] } } },
-          { $group: { _id: null, averageHours: { $avg: '$hours' } } },
-        ]),
-      ]);
+      Question.countDocuments({ isDeleted: false }),
+      Question.countDocuments({ status: 'published', isDeleted: false }),
+      Question.countDocuments({ status: 'draft', isDeleted: false }),
+      Question.countDocuments({ status: 'archived', isDeleted: false }),
+      QuestionReport.countDocuments({ status: 'open' }),
+      QuestionReport.countDocuments({ status: 'in_review' }),
+      QuestionReport.countDocuments({ status: 'resolved' }),
+      Question.countDocuments({ isDeleted: false, updatedAt: { $gte: weekStart } }),
+      QuestionReport.countDocuments({ status: 'resolved', reviewedAt: { $gte: weekStart } }),
+      Question.find({ isDeleted: false })
+        .select('question status difficulty updatedAt createdAt chapterId topicId')
+        .populate('chapterId topicId', 'name')
+        .sort('-updatedAt')
+        .limit(5)
+        .lean(),
+      QuestionReport.find({ status: { $in: ['open', 'in_review'] } })
+        .select('questionId type status createdAt')
+        .populate('questionId', 'question')
+        .sort('-createdAt')
+        .limit(5)
+        .lean(),
+      QuestionReport.aggregate([
+        {
+          $match: { status: 'resolved', reviewedAt: { $ne: null }, createdAt: { $gte: weekStart } },
+        },
+        {
+          $project: { hours: { $divide: [{ $subtract: ['$reviewedAt', '$createdAt'] }, 3600000] } },
+        },
+        { $group: { _id: null, averageHours: { $avg: '$hours' } } },
+      ]),
+    ]);
     const closedReports = resolvedReports;
     const activeReports = openReports + inReviewReports;
     res.json({
@@ -288,9 +423,10 @@ router.get('/moderator', protect, allow('moderator', 'teacher'), async (req, res
         openReports,
         inReviewReports,
         resolvedReports,
-        reportResolutionRate: activeReports + closedReports
-          ? Math.round((closedReports / (activeReports + closedReports)) * 100)
-          : 100,
+        reportResolutionRate:
+          activeReports + closedReports
+            ? Math.round((closedReports / (activeReports + closedReports)) * 100)
+            : 100,
         questionsUpdatedThisWeek,
         reportsResolvedThisWeek,
         averageResolutionHours: Math.round(resolutionTimes[0]?.averageHours || 0),

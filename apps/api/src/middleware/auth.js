@@ -18,7 +18,12 @@ exports.protect = async (req, res, next) => {
 };
 exports.allow =
   (...roles) =>
-  (req, res, next) =>
-    roles.includes(req.user.role)
+  (req, res, next) => {
+    // Teachers are the platform administrators and inherit every moderator capability.
+    const permitted =
+      roles.includes(req.user.role) ||
+      (req.user.role === 'teacher' && roles.includes('moderator'));
+    return permitted
       ? next()
       : res.status(403).json({ message: 'You do not have access to this action' });
+  };

@@ -1,83 +1,58 @@
 'use client';
 
-import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, Clock3, FilePlus2, FileQuestion, Flag, RefreshCw, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, Clock3, FilePlus2, FileQuestion, Flag, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../../components/AuthProvider';
 import { useLanguage } from '../../../components/LanguageProvider';
 import { api } from '../../../lib/api';
 
-const EMPTY = {
-  totalQuestions: 0, publishedQuestions: 0, draftQuestions: 0, archivedQuestions: 0,
-  openReports: 0, inReviewReports: 0, resolvedReports: 0, reportResolutionRate: 100,
-  questionsUpdatedThisWeek: 0, reportsResolvedThisWeek: 0, averageResolutionHours: 0,
-  recentQuestions: [], recentReports: [],
-};
-const localText = (value, language) => value?.[language] || value?.bn || value?.en || 'Untitled question';
-const relativeTime = (value, language) => {
-  const seconds = Math.round((new Date(value).getTime() - Date.now()) / 1000);
-  const ranges = [['year', 31536000], ['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]];
-  const formatter = new Intl.RelativeTimeFormat(language === 'bn' ? 'bn' : 'en', { numeric: 'auto' });
-  for (const [unit, size] of ranges) if (Math.abs(seconds) >= size) return formatter.format(Math.round(seconds / size), unit);
-  return formatter.format(seconds, 'second');
-};
-const reportTypes = { incorrect_answer: 'Incorrect answer', ambiguous_options: 'Ambiguous options', typo: 'Typo or formatting', explanation: 'Explanation issue', other: 'Other issue' };
-
-function DashboardSkeleton() {
-  return <><div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[1, 2, 3, 4].map((item) => <div key={item} className="skeleton h-32 rounded-box" />)}</div><div className="mt-6 grid gap-5 xl:grid-cols-[1.45fr_1fr]"><div className="skeleton h-96 rounded-box" /><div className="skeleton h-96 rounded-box" /></div></>;
-}
+const EMPTY = { totalQuestions: 0, publishedQuestions: 0, draftQuestions: 0, archivedQuestions: 0, openReports: 0, inReviewReports: 0, resolvedReports: 0, reportResolutionRate: 100, questionsUpdatedThisWeek: 0, reportsResolvedThisWeek: 0, averageResolutionHours: 0, recentQuestions: [], recentReports: [] };
+const text = (language, bn, en) => language === 'bn' ? bn : en;
+const number = (value, language) => Number(value || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US');
+const localText = (value, language) => value?.[language] || (language === 'bn' ? value?.bn || value?.en : value?.en || value?.bn) || text(language, 'শিরোনামহীন প্রশ্ন', 'Untitled question');
+const relativeTime = (value, language) => { const seconds = Math.round((new Date(value).getTime() - Date.now()) / 1000); const formatter = new Intl.RelativeTimeFormat(language === 'bn' ? 'bn' : 'en', { numeric: 'auto' }); for (const [unit, size] of [['year',31536000],['month',2592000],['week',604800],['day',86400],['hour',3600],['minute',60]]) if (Math.abs(seconds) >= size) return formatter.format(Math.round(seconds / size), unit); return formatter.format(seconds, 'second'); };
+const types = { incorrect_answer: ['ভুল উত্তর', 'Incorrect answer'], ambiguous_options: ['অস্পষ্ট বিকল্প', 'Ambiguous options'], typo: ['বানান বা ফরম্যাট', 'Typo or formatting'], explanation: ['ব্যাখ্যার সমস্যা', 'Explanation issue'], other: ['অন্যান্য সমস্যা', 'Other issue'] };
+const statusLabels = { published: ['প্রকাশিত', 'Published'], draft: ['খসড়া', 'Draft'], archived: ['আর্কাইভ', 'Archived'] };
 
 export default function ModeratorDashboard() {
-  const { user } = useAuth();
-  const { language } = useLanguage();
-  const [data, setData] = useState(EMPTY);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { user } = useAuth(), { language } = useLanguage();
+  const [data, setData] = useState(EMPTY), [loading, setLoading] = useState(true), [refreshing, setRefreshing] = useState(false), [error, setError] = useState('');
+  const load = useCallback(async (quiet = false) => { quiet ? setRefreshing(true) : setLoading(true); try { const result = await api('/analytics/moderator'); setData({ ...EMPTY, ...(result.data || {}) }); setError(''); } catch (requestError) { setError(requestError.message || text(language, 'ড্যাশবোর্ড লোড করা যায়নি।', 'Dashboard could not be loaded.')); } finally { setLoading(false); setRefreshing(false); } }, [language]);
+  useEffect(() => { load(); }, [load]);
+  const displayName = (language === 'bn' ? user?.nameBangla || user?.nameEnglish : user?.nameEnglish || user?.nameBangla) || user?.name || text(language, 'মডারেটর', 'Moderator');
+  const activeReports = data.openReports + data.inReviewReports;
+  const publishRate = data.totalQuestions ? Math.round((data.publishedQuestions / data.totalQuestions) * 100) : 0;
+  const operationalStatus = useMemo(() => activeReports > 10 ? ['error', text(language, 'উচ্চ অগ্রাধিকার', 'High priority'), text(language, 'রিপোর্টের চাপ বেশি—কিউ আগে পর্যালোচনা করুন।', 'Report volume is elevated—review the queue first.')] : data.draftQuestions > 10 ? ['warning', text(language, 'পর্যালোচনা প্রয়োজন', 'Review required'), text(language, 'খসড়া প্রশ্নের সংখ্যা বেশি—প্রকাশনা কিউ দেখুন।', 'Draft volume is elevated—review the publishing queue.')] : ['success', text(language, 'কার্যক্রম স্বাভাবিক', 'Operations healthy'), text(language, 'কনটেন্ট ও রিপোর্ট কিউ নিয়ন্ত্রণে আছে।', 'Content and report queues are under control.')], [activeReports, data.draftQuestions, language]);
+  const stats = [[text(language, 'মোট প্রশ্ন', 'Total questions'), data.totalQuestions, FileQuestion, 'text-primary', '/moderator/questions', text(language, `${number(publishRate, language)}% প্রকাশিত`, `${number(publishRate, language)}% published`)], [text(language, 'প্রকাশিত', 'Published'), data.publishedQuestions, CheckCircle2, 'text-success', '/moderator/questions', text(language, 'শিক্ষার্থীদের জন্য উন্মুক্ত', 'Available to learners')], [text(language, 'পর্যালোচনার অপেক্ষায়', 'Awaiting review'), data.draftQuestions, Clock3, 'text-warning', '/moderator/questions', text(language, 'খসড়া প্রশ্ন', 'Draft questions')], [text(language, 'সক্রিয় রিপোর্ট', 'Active reports'), activeReports, Flag, 'text-error', '/moderator/reports', text(language, `${number(data.inReviewReports, language)}টি পর্যালোচনায়`, `${number(data.inReviewReports, language)} in review`)]];
 
-  const loadDashboard = async () => {
-    setLoading(true);
-    try {
-      const result = await api('/analytics/moderator');
-      setData({ ...EMPTY, ...(result.data || {}) });
-      setError('');
-    } catch (requestError) { setError(requestError.message); }
-    finally { setLoading(false); }
-  };
-  useEffect(() => { loadDashboard(); }, []);
-
-  const stats = [
-    ['Total questions', data.totalQuestions, FileQuestion, 'text-primary', '/moderator/questions'],
-    ['Published', data.publishedQuestions, CheckCircle2, 'text-success', '/moderator/questions'],
-    ['Awaiting review', data.draftQuestions, Clock3, 'text-warning', '/moderator/questions'],
-    ['Open reports', data.openReports, Flag, 'text-error', '/moderator/reports'],
-  ];
-  const displayName = user?.nameEnglish || user?.name || 'Moderator';
-
-  return (
-    <div className="mx-auto max-w-7xl p-5 md:p-10">
-      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div><p className="text-[10px] font-bold tracking-widest text-base-content/50">CONTENT OPERATIONS</p><h1 className="mt-2 font-display text-4xl font-bold">Moderator dashboard</h1><p className="mt-2 text-sm text-base-content/60">Welcome back, {displayName}. Here is the live state of your content quality workflow.</p></div>
-        <div className="flex flex-wrap items-center gap-3"><Link href="/moderator/syllabus" className="btn btn-outline border-base-300"><BookOpen size={17} /> Syllabus config</Link><Link href="/moderator/questions/create" className="btn btn-primary"><FilePlus2 size={17} /> Add a question</Link></div>
-      </header>
-
-      {error && <div className="alert alert-error mt-6"><AlertTriangle size={19} /><span className="flex-1">{error}</span><button type="button" className="btn btn-sm" onClick={loadDashboard}><RefreshCw size={15} /> Retry</button></div>}
-      {loading ? <DashboardSkeleton /> : <>
-        <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Content overview">
-          {stats.map(([label, value, Icon, color, href]) => <Link href={href} className="card border border-base-300 bg-base-100 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md" key={label}><div className="card-body p-5"><div className="flex items-center justify-between"><p className="text-xs text-base-content/60">{label}</p><Icon className={color} size={20} /></div><b className="mt-1 font-display text-3xl">{Number(value).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</b></div></Link>)}
+  return <main className="mx-auto max-w-7xl p-5 md:p-10">
+    <header className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end"><div><p className="text-[10px] font-bold tracking-[.18em] text-base-content/50">{text(language, 'কনটেন্ট কার্যক্রম', 'CONTENT OPERATIONS')}</p><h1 className="mt-2 font-display text-4xl font-bold">{text(language, 'মডারেটর ড্যাশবোর্ড', 'Moderator dashboard')}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-base-content/60">{text(language, `স্বাগতম, ${displayName}। প্রশ্নভাণ্ডারের মান, প্রকাশনা ও শিক্ষার্থীদের রিপোর্ট এক জায়গা থেকে পরিচালনা করুন।`, `Welcome back, ${displayName}. Manage question quality, publishing, and learner reports from one workspace.`)}</p></div><div className="flex flex-wrap gap-2"><button className="btn btn-ghost" disabled={refreshing} onClick={() => load(true)}><RefreshCw size={16} className={refreshing ? 'animate-spin' : ''}/>{text(language, 'রিফ্রেশ', 'Refresh')}</button><Link href="/moderator/syllabus" className="btn btn-outline"><BookOpen size={17}/>{text(language, 'সিলেবাস', 'Syllabus')}</Link><Link href="/moderator/questions/create" className="btn btn-primary"><FilePlus2 size={17}/>{text(language, 'প্রশ্ন যোগ করুন', 'Add question')}</Link></div></header>
+    {error && <div className="alert alert-error mt-6"><AlertTriangle size={19}/><span className="flex-1">{error}</span><button className="btn btn-sm" onClick={() => load()}>{text(language, 'আবার চেষ্টা করুন', 'Retry')}</button></div>}
+    {loading ? <><div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[1,2,3,4].map((item) => <div className="skeleton h-32" key={item}/>)}</div><div className="mt-6 grid gap-5 xl:grid-cols-[1.4fr_1fr]"><div className="skeleton h-96"/><div className="skeleton h-96"/></div></> : <>
+      <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label={text(language, 'কনটেন্টের সারসংক্ষেপ', 'Content overview')}>{stats.map(([label, value, Icon, tone, href, detail]) => <Link href={href} className="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md" key={label}><div className="flex justify-between"><p className="text-xs text-base-content/55">{label}</p><Icon size={21} className={tone}/></div><b className="mt-3 block font-display text-3xl">{number(value, language)}</b><p className="mt-1 text-xs text-base-content/45">{detail}</p></Link>)}</section>
+      <section className={`mt-5 flex flex-col gap-4 rounded-box border p-5 sm:flex-row sm:items-center ${operationalStatus[0] === 'error' ? 'border-error/25 bg-error/5' : operationalStatus[0] === 'warning' ? 'border-warning/25 bg-warning/5' : 'border-success/25 bg-success/5'}`}><span className={`grid size-11 shrink-0 place-items-center rounded-full ${operationalStatus[0] === 'error' ? 'bg-error/15 text-error' : operationalStatus[0] === 'warning' ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success'}`}><Sparkles size={21}/></span><div className="flex-1"><b>{operationalStatus[1]}</b><p className="mt-1 text-sm text-base-content/55">{operationalStatus[2]}</p></div>{activeReports > 0 && <Link className="btn btn-sm btn-outline" href="/moderator/reports">{text(language, 'রিপোর্ট কিউ খুলুন', 'Open report queue')}<ArrowRight size={14}/></Link>}</section>
+      <div className="mt-5 space-y-5">
+        <section className="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm md:p-6"><div className="flex items-center justify-between"><div><p className="text-[10px] font-bold tracking-widest text-base-content/45">{text(language, 'সাম্প্রতিক কনটেন্ট', 'RECENT CONTENT')}</p><h2 className="font-display text-2xl font-bold">{text(language, 'প্রশ্নের কার্যক্রম', 'Question activity')}</h2></div><Link href="/moderator/questions" className="btn btn-ghost btn-sm text-primary">{text(language, 'সব দেখুন', 'View all')}<ArrowRight size={15}/></Link></div>{data.recentQuestions.length ? <div className="mt-3 divide-y divide-base-300">{data.recentQuestions.map((question) => <article className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center" key={question._id}><div className="min-w-0 flex-1"><b className="block truncate text-sm">{localText(question.question, language)}</b><div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-base-content/50"><span>{localText(question.topicId?.name || question.chapterId?.name, language)}</span><span>·</span><span>{relativeTime(question.updatedAt, language)}</span><span className={`badge badge-xs ${question.status === 'published' ? 'badge-success' : question.status === 'draft' ? 'badge-warning' : 'badge-ghost'}`}>{text(language, ...(statusLabels[question.status] || [question.status, question.status]))}</span></div></div><Link href={`/moderator/questions/${question._id}/edit`} className="btn btn-outline btn-sm">{text(language, 'পর্যালোচনা', 'Review')}</Link></article>)}</div> : <p className="py-12 text-center text-sm text-base-content/55">{text(language, 'এখনো কোনো প্রশ্ন যোগ করা হয়নি।', 'No questions have been added yet.')}</p>}</section>
+        <section className="relative overflow-hidden rounded-box border border-white/10 bg-neutral p-5 text-neutral-content shadow-sm md:p-6">
+          <div className="pointer-events-none absolute -right-16 -top-16 size-44 rounded-full bg-primary/15 blur-2xl" />
+          <div className="relative flex items-start justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="grid size-11 place-items-center rounded-xl border border-white/10 bg-white/10 text-secondary"><ShieldCheck size={22}/></span>
+              <div><p className="text-[10px] font-bold tracking-widest text-emerald-100">{text(language, 'মানের সারসংক্ষেপ', 'QUALITY SNAPSHOT')}</p><h2 className="font-display text-2xl font-bold">{text(language, 'গত ৭ দিন', 'Last 7 days')}</h2></div>
+            </div>
+            <Link href="/moderator/reports" className="btn btn-ghost btn-sm border border-white/10 bg-white/5 text-neutral-content hover:border-white/20 hover:bg-white/10">{text(language, 'কিউ দেখুন', 'View queue')}{activeReports > 0 && <span className="badge badge-secondary badge-sm">{number(activeReports, language)}</span>}<ArrowRight size={14}/></Link>
+          </div>
+          <div className="relative mt-6 grid grid-cols-3 gap-2">
+            {[[text(language, 'হালনাগাদ', 'Updated'), data.questionsUpdatedThisWeek], [text(language, 'সমাধান', 'Resolved'), data.reportsResolvedThisWeek], [text(language, 'গড় সময়', 'Avg. time'), data.averageResolutionHours ? text(language, `${number(data.averageResolutionHours, language)} ঘণ্টা`, `${number(data.averageResolutionHours, language)}h`) : '—']].map(([label,value]) => <div className="rounded-xl border border-white/10 bg-white/[.06] p-3" key={label}><b className="block font-display text-xl md:text-2xl">{typeof value === 'number' ? number(value, language) : value}</b><span className="mt-1 block text-[10px] text-neutral-content/55 md:text-xs">{label}</span></div>)}
+          </div>
+          <div className="relative mt-5 rounded-xl border border-white/10 bg-black/10 p-4">
+            <div className="mb-3 flex items-end justify-between gap-4"><div><p className="text-xs text-neutral-content/55">{text(language, 'সর্বকালীন রিপোর্ট', 'All-time reports')}</p><p className="mt-0.5 text-sm font-semibold">{text(language, 'সমাধানের হার', 'Resolution rate')}</p></div><b className="font-display text-3xl text-secondary">{number(data.reportResolutionRate, language)}%</b></div>
+            <progress className="progress progress-secondary h-2 w-full" value={data.reportResolutionRate} max="100"/>
+          </div>
         </section>
-
-        <div className="mt-6 grid gap-5 xl:grid-cols-[1.45fr_1fr]">
-          <section className="card border border-base-300 bg-base-100 shadow-sm"><div className="card-body p-5 md:p-6"><div className="flex items-center justify-between gap-4"><div><p className="text-[10px] font-bold tracking-widest text-base-content/50">RECENT CONTENT</p><h2 className="font-display text-2xl font-bold">Question activity</h2></div><Link href="/moderator/questions" className="btn btn-ghost btn-sm text-primary">View all <ArrowRight size={15} /></Link></div>
-            {data.recentQuestions.length ? <div className="mt-3 divide-y divide-base-300">{data.recentQuestions.map((question) => <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center" key={question._id}><div className="min-w-0 flex-1"><b className="block truncate text-sm">{localText(question.question, language)}</b><div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-base-content/50"><span>{localText(question.topicId?.name || question.chapterId?.name, language)}</span><span aria-hidden="true">·</span><span>{relativeTime(question.updatedAt, language)}</span><span className={`badge badge-xs ${question.status === 'published' ? 'badge-success' : question.status === 'draft' ? 'badge-warning' : 'badge-ghost'}`}>{question.status}</span></div></div><Link href={`/moderator/questions/${question._id}/edit`} className="btn btn-outline btn-sm">Review</Link></div>)}</div> : <div className="py-12 text-center text-sm text-base-content/55">No questions have been added yet.</div>}
-          </div></section>
-
-          <section className="card bg-neutral text-neutral-content shadow-sm"><div className="card-body p-5 md:p-6"><div className="flex items-start justify-between"><div><p className="text-[10px] font-bold tracking-widest text-emerald-100">QUALITY SNAPSHOT</p><h2 className="font-display text-2xl font-bold">Last 7 days</h2></div><ShieldCheck className="text-secondary" size={25} /></div><div className="mt-3 space-y-4 border-y border-white/15 py-5 text-sm"><p className="flex justify-between gap-4"><span className="text-neutral-content/70">Questions updated</span><b>{data.questionsUpdatedThisWeek}</b></p><p className="flex justify-between gap-4"><span className="text-neutral-content/70">Reports resolved</span><b>{data.reportsResolvedThisWeek}</b></p><p className="flex justify-between gap-4"><span className="text-neutral-content/70">Average resolution time</span><b>{data.averageResolutionHours ? `${data.averageResolutionHours}h` : '—'}</b></p><div><p className="mb-2 flex justify-between"><span className="text-neutral-content/70">All-time report resolution</span><b>{data.reportResolutionRate}%</b></p><progress className="progress progress-secondary w-full" value={data.reportResolutionRate} max="100" /></div></div><Link href="/moderator/reports" className="btn btn-secondary mt-2 border-0">Resolve reports {data.openReports > 0 && <span className="badge badge-neutral">{data.openReports}</span>}</Link></div></section>
-        </div>
-
-        <section className="mt-5 rounded-box border border-base-300 bg-base-100 shadow-sm"><div className="flex flex-col justify-between gap-2 border-b border-base-300 p-5 sm:flex-row sm:items-center"><div><p className="text-[10px] font-bold tracking-widest text-base-content/50">REPORT QUEUE</p><h2 className="font-display text-2xl font-bold">Needs attention</h2></div><p className="text-sm text-base-content/55">{data.openReports + data.inReviewReports} active reports</p></div>
-          {data.recentReports.length ? <div className="divide-y divide-base-300">{data.recentReports.map((report) => <div className="grid gap-3 p-5 md:grid-cols-[minmax(0,1fr)_160px] md:items-center" key={report._id}><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className={`badge badge-sm ${report.status === 'open' ? 'badge-error' : 'badge-warning'}`}>{report.status === 'in_review' ? 'In review' : 'Open'}</span><span className="text-xs font-bold uppercase tracking-wide text-primary">{reportTypes[report.type]}</span></div><p className="mt-2 truncate text-sm font-semibold">{localText(report.questionId?.question, language)}</p><p className="mt-1 text-xs text-base-content/50">Reported {relativeTime(report.createdAt, language)}</p></div><Link href="/moderator/reports" className="btn btn-outline btn-sm">Open queue <ArrowRight size={14} /></Link></div>)}</div> : <div className="p-10 text-center"><CheckCircle2 className="mx-auto text-success" size={32} /><p className="mt-2 font-semibold">The report queue is clear</p><p className="mt-1 text-sm text-base-content/55">There are no open or in-review reports.</p></div>}
-        </section>
-      </>}
-    </div>
-  );
+      </div>
+      <section className="mt-5 overflow-hidden rounded-box border border-base-300 bg-base-100 shadow-sm"><div className="flex flex-col justify-between gap-2 border-b border-base-300 p-5 sm:flex-row sm:items-center"><div><p className="text-[10px] font-bold tracking-widest text-base-content/45">{text(language, 'রিপোর্ট কিউ', 'REPORT QUEUE')}</p><h2 className="font-display text-2xl font-bold">{text(language, 'মনোযোগ প্রয়োজন', 'Needs attention')}</h2></div><span className="badge badge-outline">{text(language, `${number(activeReports, language)}টি সক্রিয় রিপোর্ট`, `${number(activeReports, language)} active reports`)}</span></div>{data.recentReports.length ? <div className="divide-y divide-base-300">{data.recentReports.map((report) => <article className="grid gap-3 p-5 md:grid-cols-[minmax(0,1fr)_160px] md:items-center" key={report._id}><div className="min-w-0"><div className="flex flex-wrap gap-2"><span className={`badge badge-sm ${report.status === 'open' ? 'badge-error' : 'badge-warning'}`}>{text(language, report.status === 'open' ? 'খোলা' : 'পর্যালোচনায়', report.status === 'open' ? 'Open' : 'In review')}</span><span className="text-xs font-bold uppercase tracking-wide text-primary">{text(language, ...(types[report.type] || types.other))}</span></div><p className="mt-2 truncate text-sm font-semibold">{localText(report.questionId?.question, language)}</p><p className="mt-1 text-xs text-base-content/50">{text(language, `রিপোর্ট করা হয়েছে ${relativeTime(report.createdAt, language)}`, `Reported ${relativeTime(report.createdAt, language)}`)}</p></div><Link href="/moderator/reports" className="btn btn-outline btn-sm">{text(language, 'কিউ খুলুন', 'Open queue')}<ArrowRight size={14}/></Link></article>)}</div> : <div className="p-10 text-center"><CheckCircle2 className="mx-auto text-success" size={34}/><p className="mt-2 font-semibold">{text(language, 'রিপোর্ট কিউ খালি', 'The report queue is clear')}</p><p className="mt-1 text-sm text-base-content/55">{text(language, 'কোনো খোলা বা পর্যালোচনাধীন রিপোর্ট নেই।', 'There are no open or in-review reports.')}</p></div>}</section>
+    </>}
+  </main>;
 }
