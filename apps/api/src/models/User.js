@@ -6,6 +6,13 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     nameEnglish: { type: String, trim: true },
     nameBangla: { type: String, trim: true },
+    mobileNumber: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      match: /^\+8801[3-9]\d{8}$/,
+    },
     email: {
       type: String,
       required: true,

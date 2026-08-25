@@ -10,7 +10,7 @@ import {
   Timer,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useLanguage } from '../../../components/LanguageProvider';
 import { api } from '../../../lib/api';
 
@@ -59,26 +59,47 @@ const modes = [
 ];
 
 const copy = (language, bangla, english) => (language === 'bn' ? bangla : english);
+const number = (value, language, options) =>
+  Number(value || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US', options);
 
 export default function Practice() {
   const { language } = useLanguage();
   const [chapters, setChapters] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
-  useEffect(() => {
+  const loadChapters = useCallback(() => {
+    setLoading(true);
+    setLoadError('');
     api('/chapters')
       .then((result) => setChapters(result.data || []))
-      .catch(() => setLoadError(true))
+      .catch(() =>
+        setLoadError(
+          copy(
+            language,
+            'অধ্যায়গুলো লোড করা যায়নি। আবার চেষ্টা করুন।',
+            'Chapters could not be loaded. Please try again.'
+          )
+        )
+      )
       .finally(() => setLoading(false));
-  }, []);
+  }, [language]);
+
+  useEffect(() => {
+    loadChapters();
+  }, [loadChapters]);
 
   const nameOf = (chapter) =>
     chapter.name?.[language] ||
-    chapter.name?.bn ||
-    chapter.name?.en ||
+    (language === 'bn'
+      ? chapter.name?.bn || chapter.name?.en
+      : chapter.name?.en || chapter.name?.bn) ||
     chapter.title ||
-    copy(language, `অধ্যায় ${chapter.order}`, `Chapter ${chapter.order}`);
+    copy(
+      language,
+      `অধ্যায় ${number(chapter.order, language)}`,
+      `Chapter ${number(chapter.order, language)}`
+    );
   const recommended = chapters.find((chapter) => chapter.questionCount >= 10);
   const recommendedCount = recommended ? Math.min(20, recommended.questionCount) : 10;
 
@@ -180,18 +201,21 @@ export default function Practice() {
         </div>
 
         {loading ? (
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            role="status"
+            aria-label={copy(language, 'অধ্যায় লোড হচ্ছে', 'Loading chapters')}
+          >
             {[1, 2, 3].map((item) => (
               <div key={item} className="skeleton h-44 w-full" />
             ))}
           </div>
         ) : loadError ? (
-          <div className="alert mt-5 border border-error/20 bg-error/5 text-sm">
-            {copy(
-              language,
-              'অধ্যায়গুলো লোড করা যায়নি। পেজটি রিফ্রেশ করুন অথবা কাস্টম পরীক্ষা তৈরি করুন।',
-              'Chapters could not be loaded. Please refresh the page or use the custom exam builder.'
-            )}
+          <div className="alert alert-error mt-5 text-sm" role="alert">
+            <span className="flex-1">{loadError}</span>
+            <button type="button" className="btn btn-sm" onClick={loadChapters}>
+              {copy(language, 'আবার চেষ্টা করুন', 'Try again')}
+            </button>
           </div>
         ) : chapters.length ? (
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -202,12 +226,13 @@ export default function Practice() {
                 <div className="card-body gap-4 p-5">
                   <div className="flex items-start justify-between gap-4">
                     <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 font-display font-bold text-primary">
-                      {String(chapter.order).padStart(2, '0')}
+                      {number(chapter.order, language, { minimumIntegerDigits: 2 })}
                     </span>
                     <span
                       className={`badge badge-sm ${available ? 'badge-ghost' : 'badge-outline opacity-60'}`}
                     >
-                      {chapter.questionCount || 0} {copy(language, 'টি প্রশ্ন', 'questions')}
+                      {number(chapter.questionCount, language)}{' '}
+                      {copy(language, 'টি প্রশ্ন', 'questions')}
                     </span>
                   </div>
                   <div>
@@ -215,7 +240,11 @@ export default function Practice() {
                     <p className="mt-1 flex items-center gap-1 text-xs text-base-content/55">
                       <Clock3 size={13} />{' '}
                       {available
-                        ? copy(language, `${count} মিনিট`, `${count} minutes`)
+                        ? copy(
+                            language,
+                            `${number(count, language)} মিনিট`,
+                            `${number(count, language)} minutes`
+                          )
                         : copy(language, 'প্রশ্ন শিগগিরই আসছে', 'Questions coming soon')}
                     </p>
                   </div>
@@ -239,6 +268,7 @@ export default function Practice() {
                 <article
                   key={chapter._id}
                   className="card border border-base-300 bg-base-100 opacity-70"
+                  aria-disabled="true"
                 >
                   {content}
                 </article>
@@ -276,8 +306,8 @@ export default function Practice() {
               {nameOf(recommended)} ·{' '}
               {copy(
                 language,
-                `${recommendedCount} প্রশ্নের দ্রুত পরীক্ষা`,
-                `${recommendedCount}-question sprint`
+                `${number(recommendedCount, language)} প্রশ্নের দ্রুত পরীক্ষা`,
+                `${number(recommendedCount, language)}-question sprint`
               )}
             </h2>
             <p className="mt-1 text-sm text-base-content/60">

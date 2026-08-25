@@ -12,7 +12,10 @@ const router = require('express').Router(),
     persistValidatedRows,
   } = require('../services/questionImport.service'),
   { protect, allow } = require('../middleware/auth'),
-  { removeEmptySubtopic, assertQuestionHierarchy } = require('../services/questionHierarchy.service');
+  {
+    removeEmptySubtopic,
+    assertQuestionHierarchy,
+  } = require('../services/questionHierarchy.service');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -84,7 +87,7 @@ router.get('/', async (req, res, next) => {
 
 router.get('/manage', protect, allow('teacher', 'moderator'), async (req, res, next) => {
   try {
-    const showArchived = req.query.archived === 'true' && req.user.role === 'teacher';
+    const showArchived = req.query.archived === 'true';
     const filter = showArchived ? { isDeleted: true } : { isDeleted: false };
     if (req.query.status) filter.status = req.query.status;
     if (req.query.chapterId) filter.chapterId = req.query.chapterId;
@@ -119,7 +122,10 @@ router.get('/manage', protect, allow('teacher', 'moderator'), async (req, res, n
       .skip((currentPage - 1) * pageSize)
       .limit(pageSize);
     const summary = { total: 0, draft: 0, published: 0, archived: 0 };
-    statusCounts.forEach(({ _id, count }) => { summary[_id] = count; summary.total += count; });
+    statusCounts.forEach(({ _id, count }) => {
+      summary[_id] = count;
+      summary.total += count;
+    });
     res.json({ data, summary, pagination: { page: currentPage, pageSize, total, totalPages } });
   } catch (error) {
     next(error);
@@ -177,35 +183,50 @@ router.get('/import/template', protect, allow('teacher', 'moderator'), async (re
     const workbook = await buildQuestionImportTemplate();
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Disposition', 'attachment; filename="mcq-import-template.xlsx"');
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
     res.send(buffer);
   } catch (error) {
     next(error);
   }
 });
 
-router.post('/import/validate', protect, allow('teacher', 'moderator'), upload.single('file'), async (req, res, next) => {
-  try {
-    if (!req.file) return res.status(400).json({ message: 'Upload an Excel or CSV file first.' });
-    const preview = await validateImportRows(req.file.buffer);
-    const invalidRows = preview.invalidRowCount ?? new Set(preview.invalidRows.map((error) => Number(error.excelRowNumber))).size;
-    res.json({
-      data: {
-        totalRows: preview.totalRows,
-        validRows: preview.validRows.length,
-        invalidRows,
-        rows: preview.validRows,
-        errors: preview.invalidRows,
-      },
-    });
-  } catch (error) {
-    next(error);
+router.post(
+  '/import/validate',
+  protect,
+  allow('teacher', 'moderator'),
+  upload.single('file'),
+  async (req, res, next) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: 'Upload an Excel or CSV file first.' });
+      const preview = await validateImportRows(req.file.buffer);
+      const invalidRows =
+        preview.invalidRowCount ??
+        new Set(preview.invalidRows.map((error) => Number(error.excelRowNumber))).size;
+      res.json({
+        data: {
+          totalRows: preview.totalRows,
+          validRows: preview.validRows.length,
+          invalidRows,
+          rows: preview.validRows,
+          errors: preview.invalidRows,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
 
 router.post('/import', protect, allow('teacher', 'moderator'), async (req, res, next) => {
   try {
-    const rows = Array.isArray(req.body?.validatedRows) ? req.body.validatedRows : Array.isArray(req.body?.rows) ? req.body.rows : [];
+    const rows = Array.isArray(req.body?.validatedRows)
+      ? req.body.validatedRows
+      : Array.isArray(req.body?.rows)
+        ? req.body.rows
+        : [];
     if (!rows.length) {
       return res.status(400).json({ message: 'Provide validated rows to import.' });
     }

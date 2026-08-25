@@ -66,6 +66,7 @@ const text = {
     strongest: 'Start learning',
     scoreChange: 'vs last month',
     newMonth: 'First results this month',
+    total: 'total',
   },
   bn: {
     portal: 'এইচএসসি আইসিটি · ব্যক্তিগত শিক্ষাঙ্গন',
@@ -102,10 +103,10 @@ const text = {
     recent: 'সর্বশেষ ফলাফল',
     history: 'সম্পূর্ণ ইতিহাস',
     noActivity: 'এখনও কোনো পরীক্ষা জমা দেওয়া হয়নি। সর্বশেষ ফলাফল এখানে দেখা যাবে।',
-    review: 'রিভিউ',
+    review: 'পর্যালোচনা',
     mistakes: 'পুনরায় দেখার উত্তর',
     revisit: 'পরীক্ষার ইতিহাস দেখুন',
-    refresh: 'ড্যাশবোর্ড রিফ্রেশ',
+    refresh: 'ড্যাশবোর্ড রিফ্রেশ করুন',
     updated: 'লাইভ তথ্য',
     loadError: 'ড্যাশবোর্ড লোড করা যায়নি। আবার চেষ্টা করুন।',
     retry: 'আবার চেষ্টা করুন',
@@ -113,6 +114,7 @@ const text = {
     strongest: 'শেখা শুরু করুন:',
     scoreChange: 'গত মাসের তুলনায়',
     newMonth: 'এই মাসের প্রথম ফলাফল',
+    total: 'সর্বমোট',
   },
 };
 const emptyAnalytics = {
@@ -130,7 +132,14 @@ const emptyAnalytics = {
   chapters: [],
 };
 const chapterName = (chapter, language) =>
-  chapter?.name?.[language] || chapter?.name?.en || chapter?.name?.bn || chapter?.title || '';
+  chapter?.name?.[language] ||
+  (language === 'bn'
+    ? chapter?.name?.bn || chapter?.name?.en
+    : chapter?.name?.en || chapter?.name?.bn) ||
+  chapter?.title ||
+  '';
+const number = (value, language, options) =>
+  Number(value || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US', options);
 const formatDate = (value, language) =>
   new Intl.DateTimeFormat(language === 'bn' ? 'bn-BD' : 'en-GB', {
     day: 'numeric',
@@ -138,8 +147,15 @@ const formatDate = (value, language) =>
   }).format(new Date(value));
 
 const modeName = (mode, language) => {
-  if (language === 'bn' && (!mode || mode === 'custom')) return 'কাস্টম';
-  return String(mode || 'custom').replace('-', ' ');
+  const modes = {
+    custom: ['কাস্টম', 'Custom'],
+    quick: ['দ্রুত পরীক্ষা', 'Quick test'],
+    chapter: ['অধ্যায় পরীক্ষা', 'Chapter test'],
+    topic: ['টপিক অনুশীলন', 'Topic practice'],
+    mistakes: ['ভুলের অনুশীলন', 'Mistake practice'],
+  };
+  const value = modes[mode || 'custom'];
+  return value ? (language === 'bn' ? value[0] : value[1]) : String(mode).replaceAll('_', ' ');
 };
 
 function Metric({ icon: Icon, label, value, detail, tone = 'primary' }) {
@@ -220,7 +236,12 @@ function DashboardContent() {
   const monthDelta = analytics.previousMonth?.testsCompleted
     ? analytics.thisMonth.averageScore - analytics.previousMonth.averageScore
     : null;
-  const firstName = (language === 'bn' ? user?.nameBangla : user?.nameEnglish) || user?.name || '';
+  const firstName =
+    (language === 'bn'
+      ? user?.nameBangla || user?.nameEnglish
+      : user?.nameEnglish || user?.nameBangla) ||
+    user?.name ||
+    '';
   const featured = [...chapters]
     .filter((x) => x.questionCount > 0)
     .sort((a, b) => b.questionCount - a.questionCount)
@@ -228,7 +249,7 @@ function DashboardContent() {
 
   if (loading)
     return (
-      <div className="mx-auto max-w-7xl p-5 md:p-10">
+      <div className="mx-auto max-w-7xl p-5 md:p-10" role="status" aria-label={copy.updated}>
         <div className="skeleton h-72 w-full" />
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((x) => (
@@ -240,7 +261,7 @@ function DashboardContent() {
   if (error && !chapters.length && !analytics.testsCompleted)
     return (
       <div className="mx-auto max-w-2xl p-5 md:p-10">
-        <div className="alert alert-error">
+        <div className="alert alert-error" role="alert">
           <span>{copy.loadError}</span>
           <button className="btn btn-sm" onClick={() => loadDashboard()}>
             {copy.retry}
@@ -280,7 +301,7 @@ function DashboardContent() {
           <div className="mt-1 flex items-center gap-2">
             <Flame className="text-warning" size={25} />
             <b className="font-display text-3xl">
-              {analytics.streakDays}{' '}
+              {number(analytics.streakDays, language)}{' '}
               <small className="font-sans text-xs font-normal">
                 {analytics.streakDays === 1 ? copy.day : copy.days}
               </small>
@@ -309,37 +330,41 @@ function DashboardContent() {
           <span className="hidden sm:inline">{copy.updated}</span>
         </button>
       </div>
-      {error && <div className="alert alert-warning mt-4 text-sm">{error}</div>}
+      {error && (
+        <div className="alert alert-warning mt-4 text-sm" role="alert">
+          {error}
+        </div>
+      )}
       <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Metric
           icon={Target}
           label={`${copy.tests} · ${copy.thisMonth}`}
-          value={analytics.thisMonth.testsCompleted}
-          detail={`${analytics.testsCompleted} total`}
+          value={number(analytics.thisMonth.testsCompleted, language)}
+          detail={`${number(analytics.testsCompleted, language)} ${copy.total}`}
         />
         <Metric
           icon={BookOpen}
           label={`${copy.questions} · ${copy.thisMonth}`}
-          value={analytics.thisMonth.questionsAttempted}
-          detail={`${analytics.questionsAttempted} total`}
+          value={number(analytics.thisMonth.questionsAttempted, language)}
+          detail={`${number(analytics.questionsAttempted, language)} ${copy.total}`}
           tone="accent"
         />
         <Metric
           icon={BarChart3}
           label={copy.average}
-          value={`${analytics.thisMonth.averageScore}%`}
+          value={`${number(analytics.thisMonth.averageScore, language)}%`}
           detail={
             monthDelta === null
               ? copy.newMonth
-              : `${monthDelta >= 0 ? '+' : ''}${monthDelta}% ${copy.scoreChange}`
+              : `${monthDelta >= 0 ? '+' : ''}${number(monthDelta, language)}% ${copy.scoreChange}`
           }
           tone="warning"
         />
         <Metric
           icon={CheckCircle2}
           label={copy.allTime}
-          value={`${analytics.overallScore}%`}
-          detail={`${analytics.bestScore}% ${copy.best.toLowerCase()}`}
+          value={`${number(analytics.overallScore, language)}%`}
+          detail={`${number(analytics.bestScore, language)}% ${copy.best.toLowerCase()}`}
           tone="success"
         />
       </div>
@@ -358,9 +383,9 @@ function DashboardContent() {
                   {chapterName(recommendation.chapter, language)}
                 </h3>
                 <p className="mt-1 text-xs text-base-content/55">
-                  {recommendation.chapter.questionCount} {copy.available}
+                  {number(recommendation.chapter.questionCount, language)} {copy.available}
                   {recommendation.accuracy !== null
-                    ? ` · ${recommendation.accuracy}% ${copy.allTime.toLowerCase()}`
+                    ? ` · ${number(recommendation.accuracy, language)}% ${copy.allTime.toLowerCase()}`
                     : ''}
                 </p>
               </div>
@@ -389,15 +414,17 @@ function DashboardContent() {
               <p className="text-[10px] font-bold tracking-[.18em] text-base-content/50">
                 {copy.mistakes}
               </p>
-              <h2 className="mt-1 font-display text-2xl font-bold">{analytics.incorrectAnswers}</h2>
+              <h2 className="mt-1 font-display text-2xl font-bold">
+                {number(analytics.incorrectAnswers, language)}
+              </h2>
             </div>
             <span className="grid size-12 place-items-center rounded-full bg-warning/10 text-warning">
               <RotateCcw size={21} />
             </span>
           </div>
           <p className="mt-4 text-sm text-base-content/60">
-            {analytics.correctAnswers} {copy.correct.toLowerCase()} · {analytics.questionsAttempted}{' '}
-            {copy.questions.toLowerCase()}
+            {number(analytics.correctAnswers, language)} {copy.correct.toLowerCase()} ·{' '}
+            {number(analytics.questionsAttempted, language)} {copy.questions.toLowerCase()}
           </p>
           <Link
             href="/student/history"
@@ -430,7 +457,7 @@ function DashboardContent() {
               >
                 <div className="flex items-start justify-between">
                   <span className="grid size-10 place-items-center rounded-full bg-primary/10 font-display font-bold text-primary">
-                    {String(chapter.order || 0).padStart(2, '0')}
+                    {number(chapter.order, language, { minimumIntegerDigits: 2 })}
                   </span>
                   <ArrowRight
                     size={17}
@@ -441,7 +468,7 @@ function DashboardContent() {
                   {chapterName(chapter, language)}
                 </h3>
                 <p className="mt-1 text-xs text-base-content/50">
-                  {chapter.questionCount} {copy.available}
+                  {number(chapter.questionCount, language)} {copy.available}
                 </p>
               </Link>
             ))}
@@ -477,7 +504,7 @@ function DashboardContent() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold capitalize">
-                    {modeName(attempt.mode, language)} · {attempt.totalQuestions}{' '}
+                    {modeName(attempt.mode, language)} · {number(attempt.totalQuestions, language)}{' '}
                     {copy.questions.toLowerCase()}
                   </p>
                   <p className="mt-1 text-xs text-base-content/45">
@@ -486,7 +513,7 @@ function DashboardContent() {
                 </div>
                 <div className="text-right">
                   <b className="font-display text-xl text-primary">
-                    {Math.round(attempt.scorePercent || 0)}%
+                    {number(Math.round(attempt.scorePercent || 0), language)}%
                   </b>
                   <Link
                     href={`/student/result?attemptId=${attempt.id}`}

@@ -14,6 +14,7 @@ const userData = (user) => ({
   nameEnglish: user.nameEnglish || user.name,
   nameBangla: user.nameBangla || '',
   email: user.email,
+  mobileNumber: user.mobileNumber || '',
   role: user.role,
   isActive: user.isActive,
 });
@@ -67,41 +68,63 @@ const limiter = (windowMs, max) => {
   };
 };
 
-router.post('/register', async (req, res, next) => {
+const normalizeMobile = (value) => {
+  const compact = String(value || '').replace(/[\s()-]/g, '');
+  if (/^01[3-9]\d{8}$/.test(compact)) return `+88${compact}`;
+  if (/^8801[3-9]\d{8}$/.test(compact)) return `+${compact}`;
+  return /^\+8801[3-9]\d{8}$/.test(compact) ? compact : '';
+};
+
+router.post('/register', limiter(15 * 60 * 1000, 5), async (req, res, next) => {
   try {
     const nameEnglish = String(req.body.nameEnglish || '').trim(),
       nameBangla = String(req.body.nameBangla || '').trim();
     const email = String(req.body.email || '')
         .trim()
         .toLowerCase(),
-      password = String(req.body.password || '');
+      mobileNumber = normalizeMobile(req.body.mobileNumber),
+      password = String(req.body.password || ''),
+      confirmPassword = String(req.body.confirmPassword || '');
     if (
       nameEnglish.length < 2 ||
       nameBangla.length < 2 ||
+      !/[A-Za-z]/.test(nameEnglish) ||
+      !/[\u0980-\u09FF]/.test(nameBangla) ||
       !/^\S+@\S+\.\S+$/.test(email) ||
-      password.length < 8
+      !mobileNumber ||
+      password.length < 8 ||
+      !/[A-Za-z]/.test(password) ||
+      !/\d/.test(password)
     )
-      return res
-        .status(400)
-        .json({
-          message:
-            'Enter Bangla and English names, a valid email, and a password of at least 8 characters.',
-        });
+      return res.status(400).json({
+        message:
+          'Enter valid Bangla and English names, email, Bangladesh mobile number, and a password of at least 8 characters containing a letter and number.',
+      });
+    if (password !== confirmPassword)
+      return res.status(400).json({ message: 'Password confirmation does not match.' });
     if (await User.exists({ email }))
       return res.status(409).json({ message: 'Email already registered' });
+    if (await User.exists({ mobileNumber }))
+      return res.status(409).json({ message: 'Mobile number already registered' });
     // Public registration is always student; privileged roles are provisioned by an administrator.
     const user = await User.create({
       name: nameEnglish,
       nameEnglish,
       nameBangla,
       email,
+      mobileNumber,
       password,
       role: 'student',
     });
     await issueSession(user, res);
     res.status(201).json({ data: { user: userData(user) } });
   } catch (error) {
-    if (error.code === 11000) return res.status(409).json({ message: 'Email already registered' });
+    if (error.code === 11000)
+      return res.status(409).json({
+        message: error.keyPattern?.mobileNumber
+          ? 'Mobile number already registered'
+          : 'Email already registered',
+      });
     next(error);
   }
 });
@@ -199,12 +222,15 @@ router.post('/forgot-password', limiter(60 * 60 * 1000, 3), async (req, res, nex
   }
 });
 
-router.post('/reset-password', async (req, res, next) => {
+router.post('/reset-password', limiter(15 * 60 * 1000, 5), async (req, res, next) => {
   try {
     const token = String(req.body.token || ''),
-      password = String(req.body.password || '');
-    if (!token || password.length < 8)
+      password = String(req.body.password || ''),
+      confirmPassword = String(req.body.confirmPassword || '');
+    if (!token || password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password))
       return res.status(400).json({ message: 'Reset link or new password is invalid.' });
+    if (password !== confirmPassword)
+      return res.status(400).json({ message: 'Password confirmation does not match.' });
     const user = await User.findOne({
       passwordResetTokenHash: hash(token),
       passwordResetExpiresAt: { $gt: new Date() },
