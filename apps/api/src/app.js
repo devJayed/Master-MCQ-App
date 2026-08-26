@@ -1,6 +1,7 @@
 const express = require('express'),
   cors = require('cors'),
-  morgan = require('morgan');
+  morgan = require('morgan'),
+  connectDb = require('./config/db');
 const app = express();
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:3000', credentials: true }));
 app.use((req, res, next) => {
@@ -16,6 +17,16 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('dev'));
 app.get('/', (_, res) => res.json({ status: 'ok' }));
+// Vercel loads the exported Express app without executing server.js. Ensure
+// database-backed routes share and await a cached connection in that runtime.
+app.use('/api', async (req, res, next) => {
+  try {
+    await connectDb();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/chapters', require('./routes/chapter.routes'));
 app.use('/api/topics', require('./routes/topic.routes'));
