@@ -27,7 +27,17 @@ const API_ERRORS = {
     'Too many attempts. Please try again later.',
   ],
   'Incorrect email or password': ['ইমেইল অথবা পাসওয়ার্ড সঠিক নয়।', 'Incorrect email or password.'],
+  'Please select a valid gender.': [
+    'অনুগ্রহ করে একটি বৈধ লিঙ্গ নির্বাচন করুন।',
+    'Please select a valid gender.',
+  ],
 };
+
+const GENDER_OPTIONS = [
+  { value: 'male', bn: 'পুরুষ', en: 'Male' },
+  { value: 'female', bn: 'নারী', en: 'Female' },
+  { value: 'other', bn: 'অন্যান্য', en: 'Other' },
+];
 
 function PasswordField({ name, label, autoComplete, language, confirm = false }) {
   const [visible, setVisible] = useState(false);
@@ -117,6 +127,14 @@ export default function AuthForm({ mode }) {
             language,
             'সঠিক বাংলাদেশি মোবাইল নম্বর লিখুন।',
             'Enter a valid Bangladesh mobile number.'
+          )
+        );
+      if (!GENDER_OPTIONS.some(({ value }) => value === values.gender))
+        return setError(
+          text(
+            language,
+            'অনুগ্রহ করে আপনার লিঙ্গ নির্বাচন করুন।',
+            'Please select your gender.'
           )
         );
       if (!/[A-Za-z]/.test(values.password) || !/\d/.test(values.password))
@@ -222,6 +240,34 @@ export default function AuthForm({ mode }) {
                 </div>
               </label>
             </div>
+          )}
+          {register && (
+            <fieldset className="form-control">
+              <legend className="label-text mb-2 font-semibold">
+                {text(language, 'লিঙ্গ', 'Gender')}
+                <span className="text-error" aria-hidden="true">
+                  {' '}
+                  *
+                </span>
+              </legend>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {GENDER_OPTIONS.map((option) => (
+                  <label
+                    key={option.value}
+                    className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-base-300 bg-base-100 px-4 transition hover:border-primary/50 hover:bg-primary/5 has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-primary has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary"
+                  >
+                    <input
+                      required
+                      type="radio"
+                      name="gender"
+                      value={option.value}
+                      className="radio radio-primary radio-sm"
+                    />
+                    <span className="font-medium">{text(language, option.bn, option.en)}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           )}
           <div className={`grid gap-5 ${register ? 'md:grid-cols-2' : ''}`}>
             <label className="form-control">

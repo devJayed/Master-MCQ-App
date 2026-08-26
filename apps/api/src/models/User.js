@@ -6,6 +6,9 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     nameEnglish: { type: String, trim: true },
     nameBangla: { type: String, trim: true },
+    // Optional at schema level so existing accounts remain valid when their sessions are refreshed.
+    // New public registrations require this field in the auth route.
+    gender: { type: String, enum: ['male', 'female', 'other'] },
     mobileNumber: {
       type: String,
       unique: true,

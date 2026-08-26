@@ -1,20 +1,26 @@
 'use client';
 
 import {
+    Bell,
     BookOpen,
     ChartNoAxesCombined,
+    ChevronDown,
     ClipboardList,
     FilePlus2,
     FileQuestion,
     FileSpreadsheet,
-    Languages,
     LayoutDashboard,
+    LogIn,
+    LogOut,
     Menu,
     PlusCircle,
     ShieldCheck,
+    User,
+    UserPlus,
     Users,
     X,
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -73,6 +79,52 @@ const roleConfig = {
   },
 };
 
+const languageSpring = { type: 'spring', stiffness: 520, damping: 34 };
+
+function LanguageToggle({ language, onToggle }) {
+  const isEnglish = language === 'en';
+  const nextLanguageLabel = isEnglish ? 'বাংলায় পরিবর্তন করুন' : 'Switch to English';
+
+  return (
+    <motion.button
+      type="button"
+      onClick={onToggle}
+      className="relative h-9 w-32 shrink-0 overflow-hidden rounded-full border border-base-300 bg-base-100 p-1 text-xs font-semibold shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      aria-label={nextLanguageLabel}
+      aria-pressed={isEnglish}
+      title={nextLanguageLabel}
+      whileHover={{ scale: 1.025 }}
+      whileTap={{ scale: 0.97 }}
+      transition={languageSpring}
+    >
+      <motion.span
+        aria-hidden="true"
+        className="absolute left-1 top-1 grid size-7 place-items-center rounded-full bg-primary shadow-sm"
+        animate={{ x: isEnglish ? 92 : 0 }}
+        transition={languageSpring}
+      >
+        <span className="size-2 rounded-full bg-primary-content" />
+      </motion.span>
+
+      <AnimatePresence initial={false} mode="wait">
+        <motion.span
+          key={language}
+          aria-hidden="true"
+          className={`absolute inset-y-0 flex items-center whitespace-nowrap ${
+            isEnglish ? 'left-3' : 'right-3'
+          }`}
+          initial={{ opacity: 0, y: 5 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -5 }}
+          transition={{ duration: 0.16, ease: 'easeOut' }}
+        >
+          {isEnglish ? 'English' : 'বাংলা'}
+        </motion.span>
+      </AnimatePresence>
+    </motion.button>
+  );
+}
+
 function Navigation({ config, role, pathname, onNavigate, isGuest }) {
   return (
     <>
@@ -126,8 +178,10 @@ export default function AppShell({ children, role = 'student' }) {
   const pathname = usePathname(),
     { language, toggleLanguage } = useLanguage(),
     [drawerOpen, setDrawerOpen] = useState(false),
+    [avatarError, setAvatarError] = useState(false),
     config = roleConfig[role],
     { user, loading, logout } = useAuth();
+  const avatarUrl = user?.profileImage || user?.avatar || user?.photo || user?.imageUrl || '';
   const displayName = user
     ? language === 'en'
       ? user.nameEnglish || user.name || user.nameBangla
@@ -136,6 +190,9 @@ export default function AppShell({ children, role = 'student' }) {
   useEffect(() => {
     setDrawerOpen(false);
   }, [pathname]);
+  useEffect(() => {
+    setAvatarError(false);
+  }, [avatarUrl]);
   useEffect(() => {
     if (!drawerOpen) return;
     const closeOnEscape = (event) => {
@@ -193,29 +250,60 @@ export default function AppShell({ children, role = 'student' }) {
             >
               <Menu size={21} />
             </button>
-            <span>{user ? config.label : 'Guest practice mode'}</span>
+            <span>
+              {user
+                ? config.label
+                : language === 'bn'
+                  ? 'অতিথি অনুশীলন মোড'
+                  : 'Guest practice mode'}
+            </span>
           </div>
-          <div className="flex-none gap-3">
-            <button
-              onClick={toggleLanguage}
-              className="btn btn-ghost btn-sm gap-1 text-xs"
-              aria-label="Change language"
-            >
-              <Languages size={16} />
-              {language === 'bn' ? 'EN' : 'বাংলা'}
+          <div className="flex flex-none items-center gap-2">
+            <LanguageToggle language={language} onToggle={toggleLanguage} />
+            <button className="btn btn-circle btn-ghost btn-sm hidden sm:inline-flex" aria-label={language === 'bn' ? 'বিজ্ঞপ্তি' : 'Notifications'}>
+              <Bell size={18} />
             </button>
-            <button className="btn btn-circle btn-ghost btn-sm" aria-label="Notifications">
-              ♧
-            </button>
-            <div className="avatar placeholder">
-              <div className="w-9 rounded-full bg-primary text-xs text-primary-content">
-                {user ? displayName.slice(0, 2).toUpperCase() : 'G'}
+            {loading ? (
+              <span className="loading loading-spinner loading-sm text-primary" />
+            ) : user ? (
+              <details className="dropdown dropdown-end">
+                <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full border border-base-300 bg-base-100 py-1 pl-1 pr-2 shadow-sm transition hover:border-primary/40 hover:bg-base-200">
+                  <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-primary/10 text-primary">
+                    {avatarUrl && !avatarError ? (
+                      <img src={avatarUrl} alt="" className="size-full object-cover" onError={() => setAvatarError(true)} />
+                    ) : (
+                      <User size={18} aria-hidden="true" />
+                    )}
+                  </span>
+                  <span className="hidden max-w-32 truncate text-sm font-semibold sm:block">{displayName}</span>
+                  <ChevronDown size={14} className="text-base-content/45" />
+                </summary>
+                <div className="dropdown-content z-30 mt-2 w-64 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl">
+                  <div className="border-b border-base-300 px-3 py-2">
+                    <p className="truncate text-sm font-bold">{displayName}</p>
+                    {user.email && <p className="mt-0.5 truncate text-xs text-base-content/50">{user.email}</p>}
+                  </div>
+                  <Link href="/change-password" className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-base-200">
+                    <User size={16} /> {language === 'bn' ? 'পাসওয়ার্ড পরিবর্তন' : 'Change password'}
+                  </Link>
+                  <button onClick={logout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-error hover:bg-error/10">
+                    <LogOut size={16} /> {language === 'bn' ? 'লগআউট' : 'Logout'}
+                  </button>
+                </div>
+              </details>
+            ) : (
+              <div className="flex items-center gap-1 rounded-full border border-base-300 bg-base-100 p-1 shadow-sm">
+                <Link href="/login" className="btn btn-ghost btn-sm gap-1.5 rounded-full px-3">
+                  <LogIn size={15} /> <span className="hidden sm:inline">{language === 'bn' ? 'লগইন' : 'Login'}</span>
+                </Link>
+                <Link href="/register" className="btn btn-primary btn-sm gap-1.5 rounded-full px-3">
+                  <UserPlus size={15} /> <span className="hidden sm:inline">{language === 'bn' ? 'নিবন্ধন' : 'Register'}</span>
+                </Link>
               </div>
-            </div>
-            {loading ? null : user ? <><span className="hidden text-sm font-semibold sm:inline">{displayName}</span><button onClick={logout} className="btn btn-ghost btn-sm">Logout</button></> : <div className="flex gap-1"><Link href="/login" className="btn btn-ghost btn-sm">Login</Link><Link href="/register" className="btn btn-primary btn-sm">Register</Link></div>}
+            )}
           </div>
         </header>
-        {!loading && !user && <div className="border-b border-primary/20 bg-primary/10 px-5 py-2 text-center text-xs">Guest mode: your tests work normally, but results are temporary. <Link className="font-bold text-primary" href="/register">Create an account</Link> to save progress.</div>}
+        {!loading && !user && <div className="border-b border-primary/20 bg-primary/10 px-5 py-2 text-center text-xs">{language === 'bn' ? <>অতিথি মোডে পরীক্ষা স্বাভাবিকভাবে চলবে, তবে ফলাফল সাময়িক। অগ্রগতি সংরক্ষণ করতে <Link className="font-bold text-primary" href="/register">অ্যাকাউন্ট খুলুন</Link>।</> : <>Guest mode: your tests work normally, but results are temporary. <Link className="font-bold text-primary" href="/register">Create an account</Link> to save progress.</>}</div>}
         {children}
       </main>
     </div>

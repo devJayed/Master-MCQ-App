@@ -16,7 +16,6 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../../components/AuthProvider';
 import { useLanguage } from '../../../components/LanguageProvider';
-import ProtectedRoute from '../../../components/ProtectedRoute';
 import { api } from '../../../lib/api';
 
 const text = {
@@ -67,6 +66,16 @@ const text = {
     scoreChange: 'vs last month',
     newMonth: 'First results this month',
     total: 'total',
+    guestGreeting: 'Welcome, guest learner',
+    guestHero: 'Practice freely. Create an account when you want to save your progress.',
+    guestHeroBody:
+      'Explore HSC ICT chapters and take full practice tests. Your guest results stay on this device only for the current session.',
+    guestStart: 'Start a quick test',
+    guestTitle: 'Turn practice into lasting progress',
+    guestBody:
+      'Create a free student account to keep your scores, exam history, streak and personalised recommendations.',
+    createAccount: 'Create free account',
+    signIn: 'I already have an account',
   },
   bn: {
     portal: 'এইচএসসি আইসিটি · ব্যক্তিগত শিক্ষাঙ্গন',
@@ -115,6 +124,16 @@ const text = {
     scoreChange: 'গত মাসের তুলনায়',
     newMonth: 'এই মাসের প্রথম ফলাফল',
     total: 'সর্বমোট',
+    guestGreeting: 'স্বাগতম, অতিথি শিক্ষার্থী',
+    guestHero: 'নির্ভয়ে অনুশীলন করুন। অগ্রগতি সংরক্ষণ করতে অ্যাকাউন্ট খুলুন।',
+    guestHeroBody:
+      'এইচএসসি আইসিটি অধ্যায় ঘুরে দেখুন এবং পূর্ণাঙ্গ অনুশীলনী পরীক্ষা দিন। অতিথি হিসেবে আপনার ফলাফল শুধু বর্তমান সেশনে এই ডিভাইসে থাকবে।',
+    guestStart: 'দ্রুত পরীক্ষা শুরু করুন',
+    guestTitle: 'অনুশীলনকে স্থায়ী অগ্রগতিতে রূপ দিন',
+    guestBody:
+      'স্কোর, পরীক্ষার ইতিহাস, ধারাবাহিকতা ও ব্যক্তিগত পরামর্শ সংরক্ষণ করতে বিনামূল্যে শিক্ষার্থী অ্যাকাউন্ট তৈরি করুন।',
+    createAccount: 'বিনামূল্যে অ্যাকাউন্ট খুলুন',
+    signIn: 'আমার ইতিমধ্যে অ্যাকাউন্ট আছে',
   },
 };
 const emptyAnalytics = {
@@ -184,7 +203,7 @@ function Metric({ icon: Icon, label, value, detail, tone = 'primary' }) {
 }
 
 function DashboardContent() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { language } = useLanguage();
   const copy = text[language] || text.en;
   const [data, setData] = useState({ analytics: emptyAnalytics, chapters: [] });
@@ -193,9 +212,13 @@ function DashboardContent() {
     [error, setError] = useState('');
   const loadDashboard = useCallback(
     async (quiet = false) => {
+      if (authLoading) return;
       quiet ? setRefreshing(true) : setLoading(true);
       try {
-        const [a, c] = await Promise.all([api('/analytics/student'), api('/chapters')]);
+        const [a, c] = await Promise.all([
+          user ? api('/analytics/student') : Promise.resolve({ data: emptyAnalytics }),
+          api('/chapters'),
+        ]);
         setData({ analytics: { ...emptyAnalytics, ...(a.data || {}) }, chapters: c.data || [] });
         setError('');
       } catch (requestError) {
@@ -205,7 +228,7 @@ function DashboardContent() {
         setRefreshing(false);
       }
     },
-    [copy.loadError]
+    [authLoading, copy.loadError, user]
   );
   useEffect(() => {
     loadDashboard();
@@ -247,7 +270,7 @@ function DashboardContent() {
     .sort((a, b) => b.questionCount - a.questionCount)
     .slice(0, 6);
 
-  if (loading)
+  if (authLoading || loading)
     return (
       <div className="mx-auto max-w-7xl p-5 md:p-10" role="status" aria-label={copy.updated}>
         <div className="skeleton h-72 w-full" />
@@ -278,25 +301,41 @@ function DashboardContent() {
             <Sparkles size={13} /> {copy.portal}
           </div>
           <p className="mb-2 text-sm font-semibold text-emerald-200">
-            {copy.greeting}
-            {firstName ? `, ${firstName}` : ''}?
+            {user ? copy.greeting : copy.guestGreeting}
+            {user && firstName ? `, ${firstName}` : ''}{user ? '?' : ''}
           </p>
-          <h1 className="font-display text-4xl font-bold leading-tight md:text-5xl">{copy.hero}</h1>
-          <p className="mt-4 max-w-xl text-sm leading-6 text-slate-300">{copy.heroBody}</p>
+          <h1 className="font-display text-4xl font-bold leading-tight md:text-5xl">
+            {user ? copy.hero : copy.guestHero}
+          </h1>
+          <p className="mt-4 max-w-xl text-sm leading-6 text-slate-300">
+            {user ? copy.heroBody : copy.guestHeroBody}
+          </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <Link className="btn btn-primary" href="/student/practice">
-              {copy.start} <ArrowRight size={16} />
-            </Link>
             <Link
-              className="btn btn-outline border-white/30 text-white hover:border-white"
-              href="/student/performance"
+              className="btn btn-primary"
+              href={user ? '/student/practice' : '/student/test?mode=quick&count=10&secondsPerQuestion=60'}
             >
-              <BarChart3 size={16} /> {copy.progress}
+              {user ? copy.start : copy.guestStart} <ArrowRight size={16} />
             </Link>
+            {user ? (
+              <Link
+                className="btn btn-outline border-white/30 text-white hover:border-white"
+                href="/student/performance"
+              >
+                <BarChart3 size={16} /> {copy.progress}
+              </Link>
+            ) : (
+              <Link
+                className="btn btn-outline border-white/30 text-white hover:border-white"
+                href="/register"
+              >
+                {copy.createAccount}
+              </Link>
+            )}
           </div>
         </div>
         <div className="absolute -right-16 -top-20 size-64 rounded-full bg-primary/60 blur-2xl" />
-        <div className="relative z-10 mt-8 w-fit rounded-box border border-white/10 bg-white/10 p-4 backdrop-blur md:absolute md:bottom-8 md:right-8 md:mt-0 md:min-w-48">
+        {user && <div className="relative z-10 mt-8 w-fit rounded-box border border-white/10 bg-white/10 p-4 backdrop-blur md:absolute md:bottom-8 md:right-8 md:mt-0 md:min-w-48">
           <p className="text-[10px] font-bold tracking-widest text-white/55">{copy.streak}</p>
           <div className="mt-1 flex items-center gap-2">
             <Flame className="text-warning" size={25} />
@@ -310,10 +349,23 @@ function DashboardContent() {
           <p className="mt-1 text-xs text-emerald-200">
             {analytics.streakDays ? copy.active : copy.noStreak}
           </p>
-        </div>
+        </div>}
       </section>
 
-      <div className="mt-9 flex items-end justify-between">
+      {!user && (
+        <section className="mt-6 flex flex-col gap-5 rounded-box border border-primary/20 bg-primary/5 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="max-w-2xl">
+            <h2 className="font-display text-2xl font-bold">{copy.guestTitle}</h2>
+            <p className="mt-2 text-sm leading-6 text-base-content/65">{copy.guestBody}</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Link href="/register" className="btn btn-primary">{copy.createAccount}</Link>
+            <Link href="/login?next=%2Fstudent%2Fdashboard" className="btn btn-outline">{copy.signIn}</Link>
+          </div>
+        </section>
+      )}
+
+      {user && <><div className="mt-9 flex items-end justify-between">
         <div>
           <p className="text-[10px] font-bold tracking-[.18em] text-base-content/50">
             {copy.overview}
@@ -434,8 +486,9 @@ function DashboardContent() {
           </Link>
         </section>
       </div>
+      </>}
 
-      <section className="mt-11">
+      {user && <section className="mt-11">
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold tracking-[.18em] text-base-content/50">
@@ -478,7 +531,7 @@ function DashboardContent() {
             {copy.emptyChapters}
           </div>
         )}
-      </section>
+      </section>}
 
       <section className="mt-11">
         <div className="flex items-end justify-between gap-3">
@@ -536,9 +589,5 @@ function DashboardContent() {
 }
 
 export default function Dashboard() {
-  return (
-    <ProtectedRoute roles={['student']}>
-      <DashboardContent />
-    </ProtectedRoute>
-  );
+  return <DashboardContent />;
 }

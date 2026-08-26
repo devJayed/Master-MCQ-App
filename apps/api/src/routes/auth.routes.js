@@ -13,6 +13,7 @@ const userData = (user) => ({
   name: user.nameEnglish || user.name,
   nameEnglish: user.nameEnglish || user.name,
   nameBangla: user.nameBangla || '',
+  gender: user.gender || '',
   email: user.email,
   mobileNumber: user.mobileNumber || '',
   role: user.role,
@@ -83,8 +84,11 @@ router.post('/register', limiter(15 * 60 * 1000, 5), async (req, res, next) => {
         .trim()
         .toLowerCase(),
       mobileNumber = normalizeMobile(req.body.mobileNumber),
+      gender = String(req.body.gender || '').trim().toLowerCase(),
       password = String(req.body.password || ''),
       confirmPassword = String(req.body.confirmPassword || '');
+    if (!['male', 'female', 'other'].includes(gender))
+      return res.status(400).json({ message: 'Please select a valid gender.' });
     if (
       nameEnglish.length < 2 ||
       nameBangla.length < 2 ||
@@ -111,6 +115,7 @@ router.post('/register', limiter(15 * 60 * 1000, 5), async (req, res, next) => {
       name: nameEnglish,
       nameEnglish,
       nameBangla,
+      gender,
       email,
       mobileNumber,
       password,
