@@ -15,7 +15,7 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('dev'));
-app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
+app.get('/', (_, res) => res.json({ status: 'ok' }));
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/chapters', require('./routes/chapter.routes'));
 app.use('/api/topics', require('./routes/topic.routes'));

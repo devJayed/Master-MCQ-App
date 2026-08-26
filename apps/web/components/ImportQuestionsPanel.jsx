@@ -14,7 +14,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useLanguage } from './LanguageProvider';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_URL = process.env.NEXT_API_URL || 'http://localhost:5000/api';
 const text = (language, bn, en) => (language === 'bn' ? bn : en);
 const number = (value, language) =>
   Number(value || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US');
