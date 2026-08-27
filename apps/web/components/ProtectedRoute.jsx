@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 import { useLanguage } from './LanguageProvider';
+import { PageSkeleton } from './Skeletons';
 
 const text = {
   en: {
@@ -36,7 +37,7 @@ export default function ProtectedRoute({ children, roles = ['student', 'teacher'
     }
   }, [loading, user, roles, router]);
 
-  if (loading) return <div className="p-10 text-center text-sm">{copy.checking}</div>;
+  if (loading) return <PageSkeleton />;
 
   if (!user) {
     return (

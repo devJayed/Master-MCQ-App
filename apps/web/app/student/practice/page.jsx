@@ -12,6 +12,7 @@ import {
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { useLanguage } from '../../../components/LanguageProvider';
+import { ListSkeleton } from '../../../components/Skeletons';
 import { api } from '../../../lib/api';
 
 const modes = [
@@ -201,15 +202,7 @@ export default function Practice() {
         </div>
 
         {loading ? (
-          <div
-            className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-            role="status"
-            aria-label={copy(language, 'অধ্যায় লোড হচ্ছে', 'Loading chapters')}
-          >
-            {[1, 2, 3].map((item) => (
-              <div key={item} className="skeleton h-44 w-full" />
-            ))}
-          </div>
+          <ListSkeleton count={3} rowClassName="h-44" className="mt-5 grid gap-4 space-y-0 sm:grid-cols-2 lg:grid-cols-3" />
         ) : loadError ? (
           <div className="alert alert-error mt-5 text-sm" role="alert">
             <span className="flex-1">{loadError}</span>

@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { sendPasswordReset } = require('../services/mailer.service');
+const { getJwtAccessSecret } = require('../config/env');
 
 const ACCESS_TTL = '120m';
 const REFRESH_DAYS = 7;
@@ -43,7 +44,7 @@ const clearAuthCookies = (res) => {
 const issueSession = async (user, res) => {
   const accessToken = jwt.sign(
     { id: user._id, sessionVersion: user.sessionVersion },
-    process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET,
+    getJwtAccessSecret(),
     { expiresIn: ACCESS_TTL }
   );
   const refreshToken = crypto.randomBytes(48).toString('base64url');

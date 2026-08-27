@@ -8,7 +8,7 @@ const { fillMissingEnglish } = require('./translation.service');
 const { removeEmptySubtopic } = require('./questionHierarchy.service');
 
 const ACCEPTED_STATUS = ['draft', 'published', 'archived'];
-const ACCEPTED_SOURCES = ['board', 'teacher', 'model_test', 'practice'];
+const ACCEPTED_SOURCES = ['board', 'teacher', 'model_test', 'practice', 'admission'];
 const ACCEPTED_DIFFICULTY = ['easy', 'medium', 'hard'];
 const OPTION_KEYS = ['A', 'B', 'C', 'D'];
 
@@ -233,7 +233,7 @@ const validateQuestionRow = async (rawRow, excelRowNumber, syllabusIndex) => {
 
   const normalizedSource = normalizedRow.sourceType || 'teacher';
   if (!ACCEPTED_SOURCES.includes(normalizedSource)) {
-    errors.push(rowError(excelRowNumber, 'Source Type', 'Source Type must be board, teacher, model_test, or practice.'));
+    errors.push(rowError(excelRowNumber, 'Source Type', 'Source Type must be board, teacher, model_test, practice, or admission.'));
   }
 
   const normalizedStatus = normalizedRow.status || 'draft';

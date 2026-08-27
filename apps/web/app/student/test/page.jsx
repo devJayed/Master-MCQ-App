@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { useLanguage } from '../../../components/LanguageProvider';
+import { TestSkeleton } from '../../../components/Skeletons';
 import { api } from '../../../lib/api';
 
 const shuffle = (items) => {
@@ -143,22 +144,7 @@ function TestContent() {
     });
 
   if (loading) {
-    return (
-      <div className="mx-auto max-w-3xl p-5 md:p-10">
-        <div className="card border border-base-300 bg-base-100">
-          <div className="card-body text-center">
-            <span className="loading loading-spinner loading-lg mx-auto text-primary" />
-            <p className="mt-4 text-sm text-base-content/60">
-              {copy(
-                language,
-                'আপনার পরীক্ষা প্রস্তুত করা হচ্ছে...',
-                'Preparing your custom test...'
-              )}
-            </p>
-          </div>
-        </div>
-      </div>
-    );
+    return <TestSkeleton />;
   }
 
   if (!questions.length) {
@@ -223,7 +209,9 @@ function TestContent() {
                 ? copy(language, 'শিক্ষক প্রদত্ত প্রশ্ন', 'Teacher question')
                 : question.sourceType === 'model_test'
                   ? copy(language, 'মডেল টেস্ট', 'Model test')
-                  : copy(language, 'অনুশীলন প্রশ্ন', 'Practice question')}
+                  : question.sourceType === 'admission'
+                    ? copy(language, 'অ্যাডমিশন প্রশ্ন', 'Admission question')
+                    : copy(language, 'অনুশীলন প্রশ্ন', 'Practice question')}
           </p>
           <h1 className="mt-2 font-display text-3xl font-bold leading-snug">
             {question.question[language] || question.question.bn || question.question.en}
@@ -279,26 +267,8 @@ function TestContent() {
 }
 
 export default function Test() {
-  const { language } = useLanguage();
   return (
-    <Suspense
-      fallback={
-        <div className="mx-auto max-w-3xl p-5 md:p-10">
-          <div className="card border border-base-300 bg-base-100">
-            <div className="card-body text-center">
-              <span className="loading loading-spinner loading-lg mx-auto text-primary" />
-              <p className="mt-4 text-sm text-base-content/60">
-                {copy(
-                  language,
-                  'আপনার পরীক্ষা প্রস্তুত করা হচ্ছে...',
-                  'Preparing your custom test...'
-                )}
-              </p>
-            </div>
-          </div>
-        </div>
-      }
-    >
+    <Suspense fallback={<TestSkeleton />}>
       <TestContent />
     </Suspense>
   );

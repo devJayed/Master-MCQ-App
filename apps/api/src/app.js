@@ -57,7 +57,16 @@ app.use('/api/reports', require('./routes/report.routes'));
 app.use('/api/analytics', require('./routes/analytics.routes'));
 app.use((err, req, res, next) => {
   console.error(err);
-  const status = err.name === 'ValidationError' || err.name === 'CastError' ? 400 : 500;
-  res.status(status).json({ message: err.message || 'Internal server error' });
+  const configurationError = err.code === 'AUTH_CONFIGURATION_ERROR';
+  const status = configurationError
+    ? 503
+    : err.name === 'ValidationError' || err.name === 'CastError'
+      ? 400
+      : 500;
+  res.status(status).json({
+    message: configurationError
+      ? 'Authentication service is temporarily unavailable.'
+      : err.message || 'Internal server error',
+  });
 });
 module.exports = app;

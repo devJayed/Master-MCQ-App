@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { useLanguage } from '../../../components/LanguageProvider';
 import Pagination from '../../../components/Pagination';
+import { TableRowsSkeleton } from '../../../components/Skeletons';
 import { api } from '../../../lib/api';
 
 const text = (language, bn, en) => (language === 'bn' ? bn : en);
@@ -285,7 +286,7 @@ export default function ModeratorQuestions() {
               </tr>
             </thead>
             <tbody>
-              {questions.map((q) => (
+              {loading ? <TableRowsSkeleton rows={pageSize > 5 ? 5 : pageSize} /> : questions.map((q) => (
                 <tr key={q._id}>
                   <td>
                     <b className="block max-w-md text-sm">
@@ -362,15 +363,6 @@ export default function ModeratorQuestions() {
             </tbody>
           </table>
         </div>
-        {loading && (
-          <p
-            className="border-t border-base-300 p-6 text-center text-sm text-base-content/60"
-            role="status"
-          >
-            <span className="loading loading-spinner loading-xs mr-2" />
-            {text(language, 'প্রশ্ন লোড হচ্ছে…', 'Loading questions…')}
-          </p>
-        )}
         <Pagination
           page={page}
           pageSize={pageSize}

@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { useLanguage } from '../../../components/LanguageProvider';
 import ReportQuestionButton from '../../../components/ReportQuestionButton';
+import { ResultSkeleton } from '../../../components/Skeletons';
 import { api } from '../../../lib/api';
 
 const localText = (value, language) => value?.[language] || value?.bn || value?.en || '';
@@ -30,7 +31,7 @@ function ResultContent() {
       .finally(() => setLoading(false));
   }, [language, searchParams]);
 
-  if (loading) return <div className="p-10 text-center text-sm">{language === 'bn' ? 'ফলাফল লোড হচ্ছে...' : 'Loading result...'}</div>;
+  if (loading) return <ResultSkeleton />;
   if (error || !attempt) return <div className="mx-auto max-w-xl p-10 text-center text-error">{error || 'Result not found.'}</div>;
 
   const questions = attempt.questionSnapshots || [];
@@ -117,7 +118,7 @@ function ResultContent() {
 
 export default function Result() {
   return (
-    <Suspense fallback={<div className="p-10 text-center text-sm">Loading result...</div>}>
+    <Suspense fallback={<ResultSkeleton />}>
       <ResultContent />
     </Suspense>
   );

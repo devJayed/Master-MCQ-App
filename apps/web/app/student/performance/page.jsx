@@ -13,6 +13,7 @@ import {
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { useLanguage } from '../../../components/LanguageProvider';
+import { CardGridSkeleton, Skeleton, SkeletonStatus } from '../../../components/Skeletons';
 import ProtectedRoute from '../../../components/ProtectedRoute';
 import { api } from '../../../lib/api';
 
@@ -156,14 +157,10 @@ function PerformanceContent() {
 
   if (loading)
     return (
-      <div className="mx-auto max-w-7xl p-5 md:p-10" role="status" aria-label={copy.loading}>
-        <div className="skeleton h-32 w-full" />
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((item) => (
-            <div className="skeleton h-32" key={item} />
-          ))}
-        </div>
-      </div>
+      <SkeletonStatus className="mx-auto max-w-7xl p-5 md:p-10" label={copy.loading}>
+        <Skeleton className="h-32 w-full" />
+        <CardGridSkeleton className="mt-4" />
+      </SkeletonStatus>
     );
   if (error)
     return (

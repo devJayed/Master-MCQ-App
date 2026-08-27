@@ -24,6 +24,7 @@ const sourceOptions = [
   ['teacher', 'Teacher', 'শিক্ষক'],
   ['model_test', 'Model test', 'মডেল টেস্ট'],
   ['practice', 'Practice', 'অনুশীলন'],
+  ['admission', 'Admission', 'অ্যাডমিশন '],
 ];
 
 const difficultyOptions = [

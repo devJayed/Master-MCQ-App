@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useLanguage } from '../../../components/LanguageProvider';
 import ProtectedRoute from '../../../components/ProtectedRoute';
 import Pagination from '../../../components/Pagination';
+import { ListSkeleton } from '../../../components/Skeletons';
 import { api } from '../../../lib/api';
 
 const formatDate = (value, language) =>
@@ -113,15 +114,7 @@ function HistoryContent() {
       </header>
 
       {loading && (
-        <div
-          className="mt-8 space-y-3"
-          role="status"
-          aria-label={text(language, 'ইতিহাস লোড হচ্ছে', 'Loading history')}
-        >
-          {[1, 2, 3].map((item) => (
-            <div className="skeleton h-16 w-full" key={item} />
-          ))}
-        </div>
+        <ListSkeleton count={3} className="mt-8" />
       )}
       {error && (
         <div className="alert alert-error mt-8" role="alert">

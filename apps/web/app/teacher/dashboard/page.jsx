@@ -17,6 +17,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../../components/AuthProvider';
 import { useLanguage } from '../../../components/LanguageProvider';
+import { CardGridSkeleton, Skeleton as SkeletonBlock } from '../../../components/Skeletons';
 import { api } from '../../../lib/api';
 
 const EMPTY = {
@@ -59,14 +60,10 @@ const relativeTime = (value, language) => {
 function Skeleton() {
   return (
     <>
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {[1, 2, 3, 4].map((item) => (
-          <div className="skeleton h-36" key={item} />
-        ))}
-      </div>
+      <CardGridSkeleton className="mt-8 xl:grid-cols-4" />
       <div className="mt-6 grid gap-5 xl:grid-cols-[1.35fr_1fr]">
-        <div className="skeleton h-96" />
-        <div className="skeleton h-96" />
+        <SkeletonBlock className="h-96" />
+        <SkeletonBlock className="h-96" />
       </div>
     </>
   );

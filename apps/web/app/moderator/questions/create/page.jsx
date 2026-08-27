@@ -26,6 +26,7 @@ const SOURCE_TYPES = {
   board: ['বোর্ড প্রশ্ন', 'Board question'],
   model_test: ['মডেল টেস্ট', 'Model test'],
   practice: ['অনুশীলন', 'Practice'],
+  admission: ['অ্যাডমিশন ', 'Admission'],
 };
 
 function LocalizedField({ label, value, onChange, language, multiline = false, required = false }) {

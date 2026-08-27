@@ -1,18 +1,20 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { getJwtAccessSecret } = require('../config/env');
 exports.protect = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '') || req.cookies?.accessToken;
     if (!token) return res.status(401).json({ message: 'Sign in required' });
     const { id, sessionVersion } = jwt.verify(
       token,
-      process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET
+      getJwtAccessSecret()
     );
     req.user = await User.findById(id);
     if (!req.user?.isActive || req.user.sessionVersion !== sessionVersion)
       return res.status(401).json({ message: 'Session expired' });
     next();
-  } catch {
+  } catch (error) {
+    if (error.code === 'AUTH_CONFIGURATION_ERROR') return next(error);
     res.status(401).json({ message: 'Invalid session' });
   }
 };
