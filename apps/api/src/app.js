@@ -3,7 +3,26 @@ const express = require('express'),
   morgan = require('morgan'),
   connectDb = require('./config/db');
 const app = express();
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:3000', credentials: true }));
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://master-mcq-app-web.vercel.app',
+  ...(process.env.CLIENT_URL || '').split(','),
+]
+  .map((origin) => origin.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      // Requests without an Origin header are not browser cross-origin requests.
+      if (!origin || allowedOrigins.includes(origin.replace(/\/$/, ''))) {
+        return callback(null, true);
+      }
+      return callback(new Error('Origin is not allowed by CORS'));
+    },
+    credentials: true,
+  })
+);
 app.use((req, res, next) => {
   req.cookies = Object.fromEntries(
     (req.headers.cookie || '')
