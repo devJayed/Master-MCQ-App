@@ -4,10 +4,8 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { sendPasswordReset } = require('../services/mailer.service');
-const { getJwtAccessSecret } = require('../config/env');
+const { getJwtConfig } = require('../config/env');
 
-const ACCESS_TTL = '120m';
-const REFRESH_DAYS = 7;
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const userData = (user) => ({
   id: user._id,
@@ -42,20 +40,21 @@ const clearAuthCookies = (res) => {
   });
 };
 const issueSession = async (user, res) => {
+  const { accessSecret, accessExpiresIn, refreshExpiresIn } = getJwtConfig();
   const accessToken = jwt.sign(
     { id: user._id, sessionVersion: user.sessionVersion },
-    getJwtAccessSecret(),
-    { expiresIn: ACCESS_TTL }
+    accessSecret,
+    { expiresIn: accessExpiresIn.value }
   );
   const refreshToken = crypto.randomBytes(48).toString('base64url');
-  const expiresAt = new Date(Date.now() + REFRESH_DAYS * 86400000);
+  const expiresAt = new Date(Date.now() + refreshExpiresIn.milliseconds);
   user.refreshTokens = (user.refreshTokens || [])
     .filter((entry) => entry.expiresAt > new Date())
     .slice(-4);
   user.refreshTokens.push({ tokenHash: hash(refreshToken), expiresAt });
   await user.save();
-  res.cookie('accessToken', accessToken, cookieOptions(15 * 60 * 1000));
-  res.cookie('refreshToken', refreshToken, cookieOptions(REFRESH_DAYS * 86400000));
+  res.cookie('accessToken', accessToken, cookieOptions(accessExpiresIn.milliseconds));
+  res.cookie('refreshToken', refreshToken, cookieOptions(refreshExpiresIn.milliseconds));
 };
 const limiter = (windowMs, max) => {
   const hits = new Map();

@@ -5,6 +5,8 @@ import {
   FilePlus2,
   FileSpreadsheet,
   Filter,
+  Eye,
+  Pencil,
   RotateCcw,
   Search,
   Trash2,
@@ -14,6 +16,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useLanguage } from '../../../components/LanguageProvider';
 import Pagination from '../../../components/Pagination';
 import { TableRowsSkeleton } from '../../../components/Skeletons';
+import QuestionPreviewModal from '../../../components/QuestionPreviewModal';
 import { api } from '../../../lib/api';
 
 const text = (language, bn, en) => (language === 'bn' ? bn : en);
@@ -45,6 +48,7 @@ export default function ModeratorQuestions() {
     [pageSize, setPageSize] = useState(10),
     [total, setTotal] = useState(0),
     [loading, setLoading] = useState(true);
+  const [previewQuestion, setPreviewQuestion] = useState(null);
   const local = (value, fallback) =>
     value?.[language] ||
     (language === 'bn' ? value?.bn || value?.en : value?.en || value?.bn) ||
@@ -316,6 +320,15 @@ export default function ModeratorQuestions() {
                   </td>
                   <td>
                     <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setPreviewQuestion(q)}
+                        title={text(language, 'মূল প্রশ্নের প্রিভিউ', 'Preview original question')}
+                        aria-label={text(language, 'মূল প্রশ্নের প্রিভিউ', 'Preview original question')}
+                      >
+                        <Eye size={16} />
+                      </button>
                       {archived ? (
                         <button
                           type="button"
@@ -330,8 +343,10 @@ export default function ModeratorQuestions() {
                           <Link
                             href={`/moderator/questions/${q._id}/edit`}
                             className="btn btn-ghost btn-sm"
+                            title={text(language, 'প্রশ্ন সম্পাদনা করুন', 'Edit question')}
+                            aria-label={text(language, 'প্রশ্ন সম্পাদনা করুন', 'Edit question')}
                           >
-                            {text(language, 'সম্পাদনা', 'Edit')}
+                            <Pencil size={16} />
                           </Link>
                           <button
                             type="button"
@@ -373,6 +388,7 @@ export default function ModeratorQuestions() {
           disabled={loading}
         />
       </section>
+      <QuestionPreviewModal question={previewQuestion} language={language} onClose={() => setPreviewQuestion(null)} />
     </main>
   );
 }

@@ -13,6 +13,10 @@ const optionSnapshot = new mongoose.Schema(
   { _id: false }
 );
 
+// Rich content is already validated by Question. Mixed snapshots preserve the exact
+// version the student saw, even if the author edits the question later.
+const richSnapshot = { type: mongoose.Schema.Types.Mixed, default: undefined };
+
 const answer = new mongoose.Schema(
   {
     questionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Question', required: true },
@@ -29,11 +33,16 @@ const questionSnapshot = new mongoose.Schema(
     chapterId: { type: mongoose.Schema.Types.ObjectId, ref: 'Chapter', required: true },
     chapterName: { type: localizedText, required: true },
     question: { type: localizedText, required: true },
+    contentVersion: { type: Number, default: 1 },
+    stimulus: richSnapshot,
+    questionContent: richSnapshot,
     options: { type: [optionSnapshot], validate: (items) => items.length === 4 },
     correctAnswer: { type: String, enum: ['A', 'B', 'C', 'D'], required: true },
     selectedAnswer: { type: String, enum: ['A', 'B', 'C', 'D', null] },
     status: { type: String, enum: ['correct', 'incorrect', 'unanswered'], required: true },
     explanation: { type: localizedText, required: true },
+    explanationContent: richSnapshot,
+    optionContent: richSnapshot,
     tags: { type: [String], default: [] },
     difficulty: { type: String, enum: ['easy', 'medium', 'hard'] },
     sourceType: String,

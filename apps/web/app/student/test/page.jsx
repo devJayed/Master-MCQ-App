@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useLanguage } from '../../../components/LanguageProvider';
 import { TestSkeleton } from '../../../components/Skeletons';
 import { api } from '../../../lib/api';
+import { RichContent, Stimulus } from '../../../components/RichContent';
 
 const shuffle = (items) => {
   const next = [...items];
@@ -179,12 +180,12 @@ function TestContent() {
 
   const question = questions[index];
   return (
-    <div className="mx-auto max-w-3xl p-5 md:p-10">
-      <div className="mb-8 flex items-center justify-between">
+    <div className="mx-auto max-w-3xl p-3 sm:p-5 md:p-8">
+      <div className="mb-5 flex items-center justify-between gap-2">
         <button onClick={() => router.push('/student/dashboard')} className="btn btn-ghost btn-sm">
           ← {copy(language, 'পরীক্ষা থেকে বের হন', 'Exit test')}
         </button>
-        <div className="w-56 text-center">
+        <div className="min-w-0 flex-1 text-center sm:max-w-56">
           <small>
             {copy(language, 'প্রশ্ন', 'Question')} {index + 1} {copy(language, 'এর মধ্যে', 'of')}{' '}
             {questions.length}
@@ -201,7 +202,7 @@ function TestContent() {
         </b>
       </div>
       <section className="card border border-base-300 bg-base-100">
-        <div className="card-body p-6 md:p-10">
+        <div className="card-body gap-0 p-4 sm:p-5 md:p-6">
           <p className="text-[10px] font-bold tracking-widest text-primary uppercase">
             {question.sourceType === 'board'
               ? copy(language, 'বোর্ড প্রশ্ন', 'Board question')
@@ -213,43 +214,62 @@ function TestContent() {
                     ? copy(language, 'অ্যাডমিশন প্রশ্ন', 'Admission question')
                     : copy(language, 'অনুশীলন প্রশ্ন', 'Practice question')}
           </p>
-          <h1 className="mt-2 font-display text-3xl font-bold leading-snug">
-            {question.question[language] || question.question.bn || question.question.en}
-          </h1>
-          <div className="mt-7 space-y-3">
+          <Stimulus stimulus={question.stimulus} language={language} />
+          <div className="mt-1 whitespace-pre-wrap font-display text-base font-bold leading-relaxed" role="heading" aria-level={1}>
+            <RichContent
+              content={question.questionContent}
+              fallback={question.question}
+              language={language}
+            />
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {question.options.map((option) => (
               <button
                 key={option.key}
                 onClick={() => select(option.key)}
-                className={`btn h-auto min-h-14 w-full justify-start text-left ${answers[index] === option.key ? 'btn-primary' : 'btn-outline border-base-300'}`}
+                className={`btn h-auto min-h-12 w-full min-w-0 flex-nowrap justify-start px-3 py-2 text-left text-sm font-medium ${answers[index] === option.key ? 'btn-primary' : 'btn-outline border-base-300'}`}
               >
-                <span className="mr-2 grid size-6 place-items-center rounded-full border border-current text-xs">
+                <span className="mr-1 grid size-6 shrink-0 place-items-center rounded-full border border-current text-xs sm:mr-2">
                   {option.key}
                 </span>
-                {option.text[language] || option.text.bn || option.text.en}
+                <div className="min-w-0 whitespace-normal break-words">
+                  <RichContent
+                    content={question.optionContent?.find((item) => item.key === option.key)?.content}
+                    fallback={option.text}
+                    language={language}
+                  />
+                </div>
               </button>
             ))}
           </div>
-          <div className="mt-8 flex items-center justify-between">
+          <div className="mt-5 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1 sm:gap-3">
             <button
               onClick={() => setIndex(Math.max(0, index - 1))}
               disabled={!index}
-              className="btn btn-ghost btn-sm"
+              className="btn btn-ghost btn-xs whitespace-nowrap px-2 sm:btn-sm sm:px-3"
             >
               ← {copy(language, 'আগের প্রশ্ন', 'Previous')}
             </button>
-            <div className="flex gap-1">
-              {questions.map((_, itemIndex) => (
-                <i
-                  key={itemIndex}
-                  className={`size-1.5 rounded-full ${index === itemIndex ? 'bg-primary' : 'bg-base-300'}`}
-                />
-              ))}
+            <div className="flex min-w-0 items-center justify-center overflow-hidden px-1">
+              {questions.length <= 12 ? (
+                <div className="flex gap-1">
+                  {questions.map((_, itemIndex) => (
+                    <i
+                      key={itemIndex}
+                      className={`size-1.5 shrink-0 rounded-full ${index === itemIndex ? 'bg-primary' : 'bg-base-300'}`}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <span className="whitespace-nowrap text-xs font-semibold text-base-content/55">
+                  {index + 1}/{questions.length}
+                </span>
+              )}
             </div>
             <button
               onClick={() => (index === questions.length - 1 ? finish() : setIndex(index + 1))}
               disabled={submitting}
-              className="btn btn-primary"
+              className="btn btn-primary btn-xs whitespace-nowrap px-2 sm:btn-sm sm:px-3"
             >
               {submitting
                 ? copy(language, 'জমা দেওয়া হচ্ছে...', 'Submitting...')

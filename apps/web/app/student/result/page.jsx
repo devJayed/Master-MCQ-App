@@ -7,8 +7,9 @@ import { useLanguage } from '../../../components/LanguageProvider';
 import ReportQuestionButton from '../../../components/ReportQuestionButton';
 import { ResultSkeleton } from '../../../components/Skeletons';
 import { api } from '../../../lib/api';
+import { RichContent, Stimulus, localValue } from '../../../components/RichContent';
 
-const localText = (value, language) => value?.[language] || value?.bn || value?.en || '';
+const localText = localValue;
 
 function ResultContent() {
   const searchParams = useSearchParams();
@@ -68,11 +69,15 @@ function ResultContent() {
               <div className="card-body gap-4">
                 <div className="flex items-start gap-3">
                   <span className="badge badge-primary mt-1">{index + 1}</span>
-                  <h2 className="flex-1 text-lg font-bold">{localText(question.question, language)}</h2>
+                  <div className="flex-1 text-lg font-bold" role="heading" aria-level={2}>
+                    <RichContent content={question.questionContent} fallback={question.question} language={language} />
+                  </div>
                   <span className={`badge ${answer.isCorrect ? 'badge-success' : 'badge-error'}`}>
                     {answer.isCorrect ? correctLabel : incorrectLabel}
                   </span>
                 </div>
+
+                <Stimulus stimulus={question.stimulus} language={language} />
 
                 <div className="space-y-2" aria-label={language === 'bn' ? 'উত্তরের বিকল্পসমূহ' : 'Answer options'}>
                   {question.options.map((option) => {
@@ -89,7 +94,13 @@ function ResultContent() {
                         <span className="grid size-6 shrink-0 place-items-center rounded-full border border-current text-xs">
                           {option.key}
                         </span>
-                        <span className="flex-1">{localText(option.text, language)}</span>
+                        <div className="flex-1">
+                          <RichContent
+                            content={question.optionContent?.find((item) => item.key === option.key)?.content}
+                            fallback={option.text}
+                            language={language}
+                          />
+                        </div>
                         {showCorrectMark && <span className="text-lg font-bold text-success" aria-label={correctLabel}>✓</span>}
                         {showIncorrectMark && <span className="text-lg font-bold text-error" aria-label={incorrectLabel}>✕</span>}
                       </div>
@@ -106,7 +117,7 @@ function ResultContent() {
                   {isOpen ? (language === 'bn' ? 'ব্যাখ্যা লুকান' : 'Hide explanation') : explanationLabel}
                 </button>
                 <ReportQuestionButton questionId={question.questionId} attemptId={attempt._id} questionText={localText(question.question, language)} />
-                {isOpen && <div className="rounded-box bg-base-200 p-4 text-sm leading-6"><p className="font-semibold">{explanationLabel}</p><p className="mt-1">{localText(question.explanation, language)}</p></div>}
+                {isOpen && <div className="rounded-box bg-base-200 p-4 text-sm leading-6"><p className="font-semibold">{explanationLabel}</p><RichContent className="mt-1" content={question.explanationContent} fallback={question.explanation} language={language} /></div>}
               </div>
             </article>
           );

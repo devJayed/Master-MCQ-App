@@ -6,15 +6,27 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useLanguage } from '../../../../components/LanguageProvider';
 import { api } from '../../../../lib/api';
+import RichContentEditor from '../../../../components/RichContentEditor';
+import { RichContent, Stimulus } from '../../../../components/RichContent';
+
+const FIXED_STIMULUS_TITLE = {
+  bn: 'নিচের উদ্দীপকের আলোকে পরবর্তী প্রশ্নটির উত্তর দাও',
+  en: 'Answer the next question based on the following stem/stimulus',
+};
 
 const initialForm = {
   chapterId: '',
   topicId: '',
   subtopicId: '',
   question: { bn: '', en: '' },
+  contentVersion: 1,
+  stimulus: { groupId: '', title: FIXED_STIMULUS_TITLE, content: { bn: [], en: [] } },
+  questionContent: { bn: [], en: [] },
   options: ['A', 'B', 'C', 'D'].map((key) => ({ key, text: { bn: '', en: '' } })),
   correctAnswer: 'A',
   explanation: { bn: '', en: '' },
+  explanationContent: { bn: [], en: [] },
+  optionContent: ['A', 'B', 'C', 'D'].map((key) => ({ key, content: { bn: [], en: [] } })),
   difficulty: 'easy',
   sourceType: 'teacher',
   tags: [],
@@ -29,7 +41,14 @@ const SOURCE_TYPES = {
   admission: ['অ্যাডমিশন ', 'Admission'],
 };
 
-function LocalizedField({ label, value, onChange, language, multiline = false, required = false }) {
+const hasStimulusContent = (stimulus) =>
+  Boolean(
+    stimulus?.groupId?.trim() ||
+      stimulus?.content?.bn?.length ||
+      stimulus?.content?.en?.length
+  );
+
+function LocalizedField({ label, value, onChange, language, multiline = false, required = false, readOnly = false }) {
   const Field = multiline ? 'textarea' : 'input';
   return (
     <div className="grid gap-3 md:grid-cols-2">
@@ -40,6 +59,7 @@ function LocalizedField({ label, value, onChange, language, multiline = false, r
         </span>
         <Field
           required={required}
+          readOnly={readOnly}
           value={value.bn}
           onChange={(event) => onChange({ ...value, bn: event.target.value })}
           className={`${multiline ? 'textarea min-h-28' : 'input'} input-bordered mt-1`}
@@ -54,6 +74,7 @@ function LocalizedField({ label, value, onChange, language, multiline = false, r
           </small>
         </span>
         <Field
+          readOnly={readOnly}
           value={value.en}
           onChange={(event) => onChange({ ...value, en: event.target.value })}
           className={`${multiline ? 'textarea min-h-28' : 'input'} input-bordered mt-1`}
@@ -102,7 +123,20 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
       .then((result) => {
         const { _id, __v, createdBy, updatedBy, createdAt, updatedAt, isDeleted, ...editorForm } =
           result.data;
-        setForm({ ...initialForm, ...editorForm, subtopicId: editorForm.subtopicId || '' });
+        setForm({
+          ...initialForm,
+          ...editorForm,
+          subtopicId: editorForm.subtopicId || '',
+          stimulus: {
+            ...(editorForm.stimulus || initialForm.stimulus),
+            title: FIXED_STIMULUS_TITLE,
+          },
+          questionContent: editorForm.questionContent || initialForm.questionContent,
+          explanationContent: editorForm.explanationContent || initialForm.explanationContent,
+          optionContent: initialForm.optionContent.map((fallback) =>
+            editorForm.optionContent?.find((item) => item.key === fallback.key) || fallback
+          ),
+        });
         setTagsInput((editorForm.tags || []).join(', '));
       })
       .catch((error) =>
@@ -118,6 +152,13 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
       ...current,
       options: current.options.map((option, itemIndex) =>
         itemIndex === index ? { ...option, text } : option
+      ),
+    }));
+  const updateOptionContent = (key, content) =>
+    setForm((current) => ({
+      ...current,
+      optionContent: current.optionContent.map((item) =>
+        item.key === key ? { ...item, content } : item
       ),
     }));
   const changeChapter = (chapterId) =>
@@ -168,6 +209,11 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
         status,
       };
       if (!payload.subtopicId) delete payload.subtopicId;
+      if (!hasStimulusContent(payload.stimulus)) {
+        delete payload.stimulus;
+      } else {
+        payload.stimulus = { ...payload.stimulus, title: FIXED_STIMULUS_TITLE };
+      }
       await api(questionId ? `/questions/${questionId}` : '/questions', {
         method: questionId ? 'PATCH' : 'POST',
         body: JSON.stringify(payload),
@@ -294,6 +340,18 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
                 </select>
               </label>
             </div>
+            <details className="rounded-box border border-primary/20 bg-primary/5 p-4">
+              <summary className="cursor-pointer font-semibold">Shared stimulus / passage (optional)</summary>
+              <p className="mt-2 text-xs text-base-content/60">Use the same group ID on related questions. Add passage text, code, diagrams, equations, or tables as ordered blocks.</p>
+              <div className="mt-4 grid gap-3">
+                <label className="form-control">
+                  <span className="label-text text-xs font-semibold">Stimulus group ID</span>
+                  <input className="input input-bordered input-sm mt-1" value={form.stimulus?.groupId || ''} onChange={(event) => update('stimulus', { ...form.stimulus, groupId: event.target.value })} placeholder="e.g. hsc-ict-db-rb-2024-stimulus-1" />
+                </label>
+                <LocalizedField label="Stimulus instruction" language={language} value={FIXED_STIMULUS_TITLE} onChange={() => {}} multiline readOnly />
+                <RichContentEditor label="Stimulus content" language={language} value={form.stimulus?.content} onChange={(content) => update('stimulus', { ...form.stimulus, content })} />
+              </div>
+            </details>
             <div>
               <div className="mb-2 flex justify-between">
                 <b>{text(language, 'প্রশ্ন', 'Question')}</b>
@@ -314,6 +372,11 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
                 required
                 multiline
               />
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm font-semibold text-primary">Use rich question body (optional)</summary>
+                <p className="my-2 text-xs text-base-content/60">Added blocks replace the plain question text for the selected language.</p>
+                <RichContentEditor label="Question body" language={language} value={form.questionContent} onChange={(value) => update('questionContent', value)} />
+              </details>
             </div>
             <fieldset>
               <div className="mb-2 flex justify-between">
@@ -348,6 +411,10 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
                       onChange={(text) => updateOption(index, text)}
                       required
                     />
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-xs font-semibold text-primary">Rich option (optional)</summary>
+                      <RichContentEditor label={`Option ${option.key}`} language={language} value={form.optionContent?.find((item) => item.key === option.key)?.content} onChange={(content) => updateOptionContent(option.key, content)} />
+                    </details>
                   </div>
                 ))}
               </div>
@@ -372,6 +439,10 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
                 required
                 multiline
               />
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm font-semibold text-primary">Use rich explanation (optional)</summary>
+                <RichContentEditor label="Explanation" language={language} value={form.explanationContent} onChange={(value) => update('explanationContent', value)} />
+              </details>
             </div>
           </div>
         </section>
@@ -381,18 +452,19 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
               <p className="text-[10px] font-bold tracking-widest text-primary">
                 {text(language, 'ভাষার প্রিভিউ', 'LANGUAGE PREVIEW')}
               </p>
-              <h2 className="mt-2 font-display text-lg font-bold">
-                {local(form.question) || text(language, 'প্রশ্নের প্রিভিউ', 'Question preview')}
-              </h2>
+              <Stimulus stimulus={form.stimulus} language={language} />
+              <div className="mt-2 font-display text-lg font-bold" role="heading" aria-level={2}>
+                <RichContent content={form.questionContent} fallback={form.question} language={language} />
+              </div>
               {form.options.map((option) => (
-                <p className="mt-2 text-sm" key={option.key}>
-                  <b>{option.key}.</b> {local(option.text) || '—'}
-                </p>
+                <div className="mt-2 text-sm" key={option.key}>
+                  <b>{option.key}.</b>{' '}
+                  <RichContent content={form.optionContent?.find((item) => item.key === option.key)?.content} fallback={option.text} language={language} />
+                </div>
               ))}
-              <p className="mt-4 border-t border-base-300 pt-3 text-xs">
-                {local(form.explanation) ||
-                  text(language, 'ব্যাখ্যার প্রিভিউ', 'Explanation preview')}
-              </p>
+              <div className="mt-4 border-t border-base-300 pt-3 text-xs">
+                <RichContent content={form.explanationContent} fallback={form.explanation} language={language} />
+              </div>
             </div>
           </section>
           <section className="card border border-base-300 bg-base-100">

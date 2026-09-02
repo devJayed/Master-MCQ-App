@@ -1,6 +1,7 @@
 import LanguageProvider from '../components/LanguageProvider';
 import { AuthProvider } from '../components/AuthProvider';
 import './globals.css';
+import 'katex/dist/katex.min.css';
 
 export const metadata = {
   title: "MCQ Master App",

@@ -11,14 +11,7 @@ export async function api(path, options = {}) {
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,
-      },
-
-
-
-
-
-
-      
+      },  
       credentials: 'include',
       cache: 'no-store',
     });

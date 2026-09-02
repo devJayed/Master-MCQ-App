@@ -1,8 +1,23 @@
 const mongoose = require('mongoose');
 
+const FIXED_STIMULUS_TITLE = {
+  bn: 'নিচের উদ্দীপকের আলোকে পরবর্তী প্রশ্নটির উত্তর দাও',
+  en: 'Answer the next question based on the following stem/stimulus',
+};
+
 const localizedText = new mongoose.Schema(
   {
     bn: { type: String, required: true, trim: true },
+    en: { type: String, trim: true, default: '' },
+  },
+  { _id: false }
+);
+
+// Stimulus metadata is genuinely optional. It must not reuse localizedText,
+// because that schema intentionally requires Bangla for core question fields.
+const optionalLocalizedText = new mongoose.Schema(
+  {
+    bn: { type: String, trim: true, default: '' },
     en: { type: String, trim: true, default: '' },
   },
   { _id: false }
@@ -16,12 +31,49 @@ const option = new mongoose.Schema(
   { _id: false }
 );
 
+const contentBlock = new mongoose.Schema(
+  {
+    type: { type: String, enum: ['text', 'code', 'math', 'image', 'table'], required: true },
+    text: { type: String, default: '' },
+    language: { type: String, default: '' },
+    display: { type: Boolean, default: false },
+    url: { type: String, default: '' },
+    alt: { type: String, default: '' },
+    caption: { type: String, default: '' },
+    rows: { type: [[String]], default: undefined },
+  },
+  { _id: false }
+);
+
+const localizedBlocks = new mongoose.Schema(
+  {
+    bn: { type: [contentBlock], default: [] },
+    en: { type: [contentBlock], default: [] },
+  },
+  { _id: false }
+);
+
+const optionContent = new mongoose.Schema(
+  {
+    key: { type: String, enum: ['A', 'B', 'C', 'D'], required: true },
+    content: { type: localizedBlocks, default: () => ({}) },
+  },
+  { _id: false }
+);
+
 const questionSchema = new mongoose.Schema(
   {
     chapterId: { type: mongoose.Schema.Types.ObjectId, ref: 'Chapter', required: true },
     topicId: { type: mongoose.Schema.Types.ObjectId, ref: 'Topic', required: true, index: true },
     subtopicId: { type: mongoose.Schema.Types.ObjectId, ref: 'Subtopic', index: true },
     question: { type: localizedText, required: true },
+    contentVersion: { type: Number, default: 1 },
+    stimulus: {
+      groupId: { type: String, trim: true, default: '' },
+      title: { type: optionalLocalizedText, default: () => ({}) },
+      content: { type: localizedBlocks, default: () => ({}) },
+    },
+    questionContent: { type: localizedBlocks, default: () => ({}) },
     questionType: { type: String, default: 'single_choice' },
     options: {
       type: [option],
@@ -32,6 +84,8 @@ const questionSchema = new mongoose.Schema(
     },
     correctAnswer: { type: String, enum: ['A', 'B', 'C', 'D'], required: true },
     explanation: { type: localizedText, required: true },
+    explanationContent: { type: localizedBlocks, default: () => ({}) },
+    optionContent: { type: [optionContent], default: [] },
     difficulty: { type: String, enum: ['easy', 'medium', 'hard'], default: 'medium' },
     sourceType: {
       type: String,
@@ -51,6 +105,16 @@ const questionSchema = new mongoose.Schema(
 
 questionSchema.index({ chapterId: 1, topicId: 1, subtopicId: 1, status: 1, isDeleted: 1 });
 questionSchema.index({ isDeleted: 1, updatedAt: -1 });
+
+questionSchema.pre('validate', function enforceFixedStimulusInstruction(next) {
+  const hasStimulus = Boolean(
+    this.stimulus?.groupId?.trim() ||
+      this.stimulus?.content?.bn?.length ||
+      this.stimulus?.content?.en?.length
+  );
+  if (hasStimulus) this.stimulus.title = FIXED_STIMULUS_TITLE;
+  next();
+});
 
 questionSchema.pre('validate', function validatePublishedBilingualContent(next) {
   if (this.status !== 'published') return next();
