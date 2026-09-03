@@ -12,8 +12,11 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
   const logout = async () => {
-    await api('/auth/logout', { method: 'POST' });
-    setUser(null);
+    try {
+      await api('/auth/logout', { method: 'POST' });
+    } finally {
+      setUser(null);
+    }
   };
   return (
     <AuthContext.Provider

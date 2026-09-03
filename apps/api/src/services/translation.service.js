@@ -1,3 +1,5 @@
+const { hasRichLanguage } = require('../utils/richContent');
+
 function missing(value) {
   return !value || !value.trim();
 }
@@ -49,9 +51,22 @@ async function fillMissingEnglish(
   targets = ['question', 'options', 'explanation']
 ) {
   const generated = [];
-  const question = targets.includes('question')
-    ? await fillLocalizedValue(questionPayload.question, generated, 'question')
-    : questionPayload.question;
+  let question = questionPayload.question;
+  if (targets.includes('question')) {
+    const hasRichBangla = hasRichLanguage(questionPayload.questionContent, 'bn');
+    const hasRichEnglish = hasRichLanguage(questionPayload.questionContent, 'en');
+    if (hasRichBangla) {
+      if (!hasRichEnglish && !questionPayload.question?.en?.trim()) {
+        throw new Error('Add English rich question content before publishing.');
+      }
+    } else if (hasRichEnglish) {
+      if (!questionPayload.question?.bn?.trim()) {
+        throw new Error('Bangla question text or Bangla rich question content is required.');
+      }
+    } else {
+      question = await fillLocalizedValue(questionPayload.question, generated, 'question');
+    }
+  }
   const explanation = targets.includes('explanation')
     ? await fillLocalizedValue(questionPayload.explanation, generated, 'explanation')
     : questionPayload.explanation;

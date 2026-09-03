@@ -4,6 +4,21 @@ export const API_URL =
     ? 'https://master-mcq-app-api.vercel.app/api'
     : 'http://localhost:5000/api');
 
+let refreshPromise;
+
+const refreshSession = () => {
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${API_URL}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    }).finally(() => {
+      refreshPromise = undefined;
+    });
+  }
+  return refreshPromise;
+};
+
 export async function api(path, options = {}) {
   const request = () =>
     fetch(`${API_URL}${path}`, {
@@ -16,11 +31,19 @@ export async function api(path, options = {}) {
       cache: 'no-store',
     });
   let response = await request();
-  if (response.status === 401 && typeof window !== 'undefined' && !path.startsWith('/auth/')) {
-    const refreshed = await fetch(`${API_URL}/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-    });
+  const unauthenticatedAuthPaths = new Set([
+    '/auth/login',
+    '/auth/login/mfa',
+    '/auth/register',
+    '/auth/refresh',
+    '/auth/forgot-password',
+    '/auth/reset-password',
+    '/auth/verify-email',
+    '/auth/resend-verification',
+  ]);
+  const canRefresh = !unauthenticatedAuthPaths.has(path);
+  if (response.status === 401 && typeof window !== 'undefined' && canRefresh) {
+    const refreshed = await refreshSession();
     if (refreshed.ok) response = await request();
   }
   if (!response.ok) throw new Error((await response.json()).message || 'Something went wrong');

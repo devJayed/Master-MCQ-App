@@ -2,20 +2,27 @@ const express = require('express'),
   cors = require('cors'),
   morgan = require('morgan'),
   connectDb = require('./config/db');
+const { isAllowedOrigin, verifyRequestOrigin } = require('./middleware/requestOrigin');
 const app = express();
-const allowedOrigins = [
-  'http://localhost:3000',
-  'https://master-mcq-app-web.vercel.app',
-  ...(process.env.CLIENT_URL || '').split(','),
-]
-  .map((origin) => origin.trim().replace(/\/$/, ''))
-  .filter(Boolean);
+
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+  });
+  next();
+});
 
 app.use(
   cors({
     origin(origin, callback) {
       // Requests without an Origin header are not browser cross-origin requests.
-      if (!origin || allowedOrigins.includes(origin.replace(/\/$/, ''))) {
+      if (!origin || isAllowedOrigin(origin)) {
         return callback(null, true);
       }
       return callback(new Error('Origin is not allowed by CORS'));
@@ -34,6 +41,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '1mb' }));
+app.use('/api', verifyRequestOrigin);
 app.use(morgan('dev'));
 app.get('/', (_, res) => res.json({ status: 'ok' }));
 // Vercel loads the exported Express app without executing server.js. Ensure

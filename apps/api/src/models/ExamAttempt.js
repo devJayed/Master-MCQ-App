@@ -53,7 +53,7 @@ const questionSnapshot = new mongoose.Schema(
 const attemptSchema = new mongoose.Schema(
   {
     studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    submissionKey: { type: String, required: true, unique: true, index: true },
+    submissionKey: { type: String, required: true },
     mode: {
       type: String,
       enum: ['topic', 'chapter', 'quick', 'mistakes', 'custom', 'model'],
@@ -80,5 +80,6 @@ const attemptSchema = new mongoose.Schema(
 );
 
 attemptSchema.index({ studentId: 1, submittedAt: -1 });
+attemptSchema.index({ studentId: 1, submissionKey: 1 }, { unique: true });
 
 module.exports = mongoose.model('ExamAttempt', attemptSchema);

@@ -17,6 +17,7 @@ import { useLanguage } from '../../../components/LanguageProvider';
 import Pagination from '../../../components/Pagination';
 import { TableRowsSkeleton } from '../../../components/Skeletons';
 import QuestionPreviewModal from '../../../components/QuestionPreviewModal';
+import { RichContent } from '../../../components/RichContent';
 import { api } from '../../../lib/api';
 
 const text = (language, bn, en) => (language === 'bn' ? bn : en);
@@ -293,12 +294,12 @@ export default function ModeratorQuestions() {
               {loading ? <TableRowsSkeleton rows={pageSize > 5 ? 5 : pageSize} /> : questions.map((q) => (
                 <tr key={q._id}>
                   <td>
-                    <b className="block max-w-md text-sm">
-                      {local(
-                        q.question,
-                        text(language, 'প্রশ্ন পাওয়া যায়নি', 'Question unavailable')
-                      )}
-                    </b>
+                    <RichContent
+                      content={q.questionContent}
+                      fallback={q.question}
+                      language={language}
+                      className="max-w-md text-sm font-semibold"
+                    />
                   </td>
                   <td className="text-xs">
                     {name(q.chapterId)}

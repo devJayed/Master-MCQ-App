@@ -13,6 +13,7 @@ import {
     LogIn,
     LogOut,
     Menu,
+    MonitorSmartphone,
     PlusCircle,
     ShieldCheck,
     User,
@@ -285,6 +286,9 @@ export default function AppShell({ children, role = 'student' }) {
                   </div>
                   <Link href="/change-password" className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-base-200">
                     <User size={16} /> {language === 'bn' ? 'পাসওয়ার্ড পরিবর্তন' : 'Change password'}
+                  </Link>
+                  <Link href="/sessions" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-base-200">
+                    <MonitorSmartphone size={16} /> Active sessions
                   </Link>
                   <button onClick={logout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-error hover:bg-error/10">
                     <LogOut size={16} /> {language === 'bn' ? 'লগআউট' : 'Logout'}

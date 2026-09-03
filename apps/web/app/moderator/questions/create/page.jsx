@@ -48,6 +48,15 @@ const hasStimulusContent = (stimulus) =>
       stimulus?.content?.en?.length
   );
 
+const hasMeaningfulBlock = (block) => {
+  if (block?.type === 'image') return Boolean(block.url?.trim());
+  if (block?.type === 'table')
+    return block.rows?.some((row) => row.some((cell) => String(cell || '').trim()));
+  return Boolean(block?.text?.trim());
+};
+const hasRichLanguage = (content, language) =>
+  Boolean(content?.[language]?.some(hasMeaningfulBlock));
+
 function LocalizedField({ label, value, onChange, language, multiline = false, required = false, readOnly = false }) {
   const Field = multiline ? 'textarea' : 'input';
   return (
@@ -147,6 +156,22 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
   }, [questionId]);
 
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const updateQuestion = (value) =>
+    setForm((current) => {
+      const questionContent = { ...current.questionContent };
+      for (const languageKey of ['bn', 'en']) {
+        if (value[languageKey]?.trim()) questionContent[languageKey] = [];
+      }
+      return { ...current, question: value, questionContent };
+    });
+  const updateQuestionContent = (value) =>
+    setForm((current) => {
+      const question = { ...current.question };
+      for (const languageKey of ['bn', 'en']) {
+        if (hasRichLanguage(value, languageKey)) question[languageKey] = '';
+      }
+      return { ...current, question, questionContent: value };
+    });
   const updateOption = (index, text) =>
     setForm((current) => ({
       ...current,
@@ -196,9 +221,25 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
     }
   };
   const submit = async (status) => {
-    setBusy(true);
     setMessage('');
     setMessageTone('error');
+    for (const languageKey of ['bn', 'en']) {
+      const hasPlain = Boolean(form.question?.[languageKey]?.trim());
+      const hasRich = hasRichLanguage(form.questionContent, languageKey);
+      if (hasPlain && hasRich) {
+        setMessage(`Use either plain or rich ${languageKey === 'bn' ? 'Bangla' : 'English'} question content, not both.`);
+        return;
+      }
+      if (languageKey === 'bn' && !hasPlain && !hasRich) {
+        setMessage('Enter Bangla plain question text or Bangla rich question content.');
+        return;
+      }
+      if (status === 'published' && !hasPlain && !hasRich) {
+        setMessage(`Add ${languageKey === 'bn' ? 'Bangla' : 'English'} question content before publishing.`);
+        return;
+      }
+    }
+    setBusy(true);
     try {
       const payload = {
         ...form,
@@ -368,14 +409,14 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
                 label={text(language, 'প্রশ্ন', 'Question')}
                 language={language}
                 value={form.question}
-                onChange={(value) => update('question', value)}
-                required
+                onChange={updateQuestion}
+                required={!hasRichLanguage(form.questionContent, 'bn')}
                 multiline
               />
               <details className="mt-3">
                 <summary className="cursor-pointer text-sm font-semibold text-primary">Use rich question body (optional)</summary>
-                <p className="my-2 text-xs text-base-content/60">Added blocks replace the plain question text for the selected language.</p>
-                <RichContentEditor label="Question body" language={language} value={form.questionContent} onChange={(value) => update('questionContent', value)} />
+                <p className="my-2 text-xs text-base-content/60">Use either plain text or rich content for each language. Adding rich content clears the corresponding plain text.</p>
+                <RichContentEditor label="Question body" language={language} value={form.questionContent} onChange={updateQuestionContent} />
               </details>
             </div>
             <fieldset>

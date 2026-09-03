@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { hasRichLanguage } = require('../utils/richContent');
 
 const FIXED_STIMULUS_TITLE = {
   bn: 'নিচের উদ্দীপকের আলোকে পরবর্তী প্রশ্নটির উত্তর দাও',
@@ -66,7 +67,7 @@ const questionSchema = new mongoose.Schema(
     chapterId: { type: mongoose.Schema.Types.ObjectId, ref: 'Chapter', required: true },
     topicId: { type: mongoose.Schema.Types.ObjectId, ref: 'Topic', required: true, index: true },
     subtopicId: { type: mongoose.Schema.Types.ObjectId, ref: 'Subtopic', index: true },
-    question: { type: localizedText, required: true },
+    question: { type: optionalLocalizedText, default: () => ({}) },
     contentVersion: { type: Number, default: 1 },
     stimulus: {
       groupId: { type: String, trim: true, default: '' },
@@ -116,10 +117,32 @@ questionSchema.pre('validate', function enforceFixedStimulusInstruction(next) {
   next();
 });
 
+questionSchema.pre('validate', function validateQuestionBodyChoice(next) {
+  for (const language of ['bn', 'en']) {
+    const hasPlain = Boolean(this.question?.[language]?.trim());
+    const hasRich = hasRichLanguage(this.questionContent, language);
+    if (hasPlain && hasRich) {
+      return next(
+        new Error(
+          `Use either plain question text or rich question content for ${language}, not both.`
+        )
+      );
+    }
+    if (language === 'bn' && !hasPlain && !hasRich) {
+      return next(new Error('Bangla question text or Bangla rich question content is required.'));
+    }
+  }
+  next();
+});
+
 questionSchema.pre('validate', function validatePublishedBilingualContent(next) {
   if (this.status !== 'published') return next();
   const missing = [];
-  if (!this.question?.bn || !this.question?.en) missing.push('question');
+  if (
+    (!this.question?.bn && !hasRichLanguage(this.questionContent, 'bn')) ||
+    (!this.question?.en && !hasRichLanguage(this.questionContent, 'en'))
+  )
+    missing.push('question');
   if (!this.explanation?.bn || !this.explanation?.en) missing.push('explanation');
   this.options.forEach((optionItem) => {
     if (!optionItem.text?.bn || !optionItem.text?.en) missing.push(`option ${optionItem.key}`);

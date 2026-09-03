@@ -86,6 +86,7 @@ export default function AuthForm({ mode }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [mfaChallenge, setMfaChallenge] = useState('');
   const register = mode === 'register';
 
   useEffect(() => {
@@ -101,9 +102,26 @@ export default function AuthForm({ mode }) {
 
   const submit = async (event) => {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setError('');
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     const values = Object.fromEntries(form);
+    if (mfaChallenge) {
+      setBusy(true);
+      try {
+        const result = await api('/auth/login/mfa', {
+          method: 'POST',
+          body: JSON.stringify({ challenge: mfaChallenge, code: values.mfaCode }),
+        });
+        setUser(result.data.user);
+        router.replace(`/${result.data.user.role}/dashboard`);
+      } catch (requestError) {
+        setError(requestError.message);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     if (register) {
       if (!/[A-Za-z]/.test(values.nameEnglish || ''))
         return setError(
@@ -154,9 +172,20 @@ export default function AuthForm({ mode }) {
         method: 'POST',
         body: JSON.stringify(values),
       });
+      if (result.data.verificationRequired) {
+        formElement.reset();
+        setNotice('Check your email and use the verification link before signing in.');
+        return;
+      }
+      if (result.data.mfaRequired) {
+        setMfaChallenge(result.data.challenge);
+        setNotice('A sign-in code was sent to your email.');
+        return;
+      }
       setUser(result.data.user);
       const next = new URLSearchParams(window.location.search).get('next');
-      router.replace(next || `/${result.data.user.role}/dashboard`);
+      const safeNext = next?.startsWith('/') && !next.startsWith('//') ? next : null;
+      router.replace(safeNext || `/${result.data.user.role}/dashboard`);
     } catch (requestError) {
       const localized = API_ERRORS[requestError.message];
       setError(
@@ -348,6 +377,21 @@ export default function AuthForm({ mode }) {
             <div className="alert alert-success py-3 text-sm" role="status">
               {notice}
             </div>
+          )}
+          {mfaChallenge && (
+            <label className="form-control">
+              <span className="label-text mb-2 font-semibold">Sign-in code</span>
+              <input
+                required
+                name="mfaCode"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]{6}"
+                maxLength="6"
+                className="input input-bordered"
+                placeholder="6-digit code"
+              />
+            </label>
           )}
           <button disabled={busy} className="btn btn-primary mt-1" type="submit">
             {busy && <span className="loading loading-spinner loading-xs" />}

@@ -92,8 +92,12 @@ router.post('/', protect, async (req, res, next) => {
     res.status(201).json({ data });
   } catch (e) {
     if (e?.code === 11000 && e?.keyPattern?.submissionKey && e?.keyValue?.submissionKey) {
-      const data = await Attempt.findOne({ submissionKey: e.keyValue.submissionKey });
+      const data = await Attempt.findOne({
+        submissionKey: e.keyValue.submissionKey,
+        studentId: req.user._id,
+      });
       if (data) return res.status(200).json({ data, duplicate: true });
+      return res.status(409).json({ message: 'This submission key is already in use.' });
     }
     next(e);
   }

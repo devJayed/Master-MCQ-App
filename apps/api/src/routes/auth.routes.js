@@ -3,8 +3,15 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
-const { sendPasswordReset } = require('../services/mailer.service');
+const {
+  sendPasswordReset,
+  sendEmailVerification,
+  sendMfaCode,
+} = require('../services/mailer.service');
 const { getJwtConfig } = require('../config/env');
+const rateLimit = require('../middleware/authRateLimit');
+const { validatePassword } = require('../utils/passwordPolicy');
+const { recordAuthEvent } = require('../services/authAudit.service');
 
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const userData = (user) => ({
@@ -17,29 +24,48 @@ const userData = (user) => ({
   mobileNumber: user.mobileNumber || '',
   role: user.role,
   isActive: user.isActive,
+  emailVerified: user.emailVerified !== false,
 });
-const cookieOptions = (maxAge) => ({
+const enabled = (name) => String(process.env[name]).toLowerCase() === 'true';
+const publicClientUrl = () =>
+  String(process.env.CLIENT_URL || 'http://localhost:3000')
+    .split(',')[0]
+    .trim()
+    .replace(/\/$/, '');
+const createEmailVerification = async (user) => {
+  const token = crypto.randomBytes(32).toString('base64url');
+  user.emailVerificationTokenHash = hash(token);
+  user.emailVerificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  await user.save({ validateBeforeSave: false });
+  await sendEmailVerification({
+    to: user.email,
+    verificationUrl: `${publicClientUrl()}/verify-email?token=${token}`,
+  });
+};
+const cookieSameSite = () => {
+  const configured = String(process.env.AUTH_COOKIE_SAME_SITE || '').toLowerCase();
+  if (['lax', 'strict', 'none'].includes(configured)) return configured;
+  return process.env.NODE_ENV === 'production' ? 'none' : 'lax';
+};
+const baseCookieOptions = () => ({
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
-  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+  sameSite: cookieSameSite(),
   path: '/',
+});
+const cookieOptions = (maxAge) => ({
+  ...baseCookieOptions(),
   maxAge,
 });
 const clearAuthCookies = (res) => {
-  res.clearCookie('accessToken', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    path: '/',
-  });
-  res.clearCookie('refreshToken', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    path: '/',
-  });
+  res.clearCookie('accessToken', baseCookieOptions());
+  res.clearCookie('refreshToken', baseCookieOptions());
 };
-const issueSession = async (user, res) => {
+const requestMetadata = (req) => ({
+  userAgent: String(req.get('user-agent') || '').slice(0, 500),
+  ip: req.ip,
+});
+const issueSession = async (user, res, metadata = {}) => {
   const { accessSecret, accessExpiresIn, refreshExpiresIn } = getJwtConfig();
   const accessToken = jwt.sign(
     { id: user._id, sessionVersion: user.sessionVersion },
@@ -51,24 +77,18 @@ const issueSession = async (user, res) => {
   user.refreshTokens = (user.refreshTokens || [])
     .filter((entry) => entry.expiresAt > new Date())
     .slice(-4);
-  user.refreshTokens.push({ tokenHash: hash(refreshToken), expiresAt });
+  user.refreshTokens.push({
+    tokenHash: hash(refreshToken),
+    expiresAt,
+    createdAt: metadata.createdAt || new Date(),
+    lastUsedAt: new Date(),
+    userAgent: metadata.userAgent,
+    ip: metadata.ip,
+  });
   await user.save();
   res.cookie('accessToken', accessToken, cookieOptions(accessExpiresIn.milliseconds));
   res.cookie('refreshToken', refreshToken, cookieOptions(refreshExpiresIn.milliseconds));
 };
-const limiter = (windowMs, max) => {
-  const hits = new Map();
-  return (req, res, next) => {
-    const key = `${req.ip}:${String(req.body?.email || '').toLowerCase()}`;
-    const now = Date.now(),
-      entry = hits.get(key);
-    if (!entry || entry.expiresAt <= now) hits.set(key, { count: 1, expiresAt: now + windowMs });
-    else if (++entry.count > max)
-      return res.status(429).json({ message: 'Too many requests. Please try again later.' });
-    next();
-  };
-};
-
 const normalizeMobile = (value) => {
   const compact = String(value || '').replace(/[\s()-]/g, '');
   if (/^01[3-9]\d{8}$/.test(compact)) return `+88${compact}`;
@@ -76,7 +96,7 @@ const normalizeMobile = (value) => {
   return /^\+8801[3-9]\d{8}$/.test(compact) ? compact : '';
 };
 
-router.post('/register', limiter(15 * 60 * 1000, 5), async (req, res, next) => {
+router.post('/register', rateLimit({ name: 'register', windowMs: 15 * 60 * 1000, max: 5, includeEmail: true }), async (req, res, next) => {
   try {
     const nameEnglish = String(req.body.nameEnglish || '').trim(),
       nameBangla = String(req.body.nameBangla || '').trim();
@@ -96,9 +116,7 @@ router.post('/register', limiter(15 * 60 * 1000, 5), async (req, res, next) => {
       !/[\u0980-\u09FF]/.test(nameBangla) ||
       !/^\S+@\S+\.\S+$/.test(email) ||
       !mobileNumber ||
-      password.length < 8 ||
-      !/[A-Za-z]/.test(password) ||
-      !/\d/.test(password)
+      validatePassword(password)
     )
       return res.status(400).json({
         message:
@@ -120,8 +138,15 @@ router.post('/register', limiter(15 * 60 * 1000, 5), async (req, res, next) => {
       mobileNumber,
       password,
       role: 'student',
+      emailVerified: !enabled('REQUIRE_EMAIL_VERIFICATION'),
     });
-    await issueSession(user, res);
+    if (!user.emailVerified) {
+      await createEmailVerification(user);
+      await recordAuthEvent(req, 'register', { user, email, successful: true });
+      return res.status(201).json({ data: { verificationRequired: true } });
+    }
+    await issueSession(user, res, requestMetadata(req));
+    await recordAuthEvent(req, 'register', { user, email, successful: true });
     res.status(201).json({ data: { user: userData(user) } });
   } catch (error) {
     if (error.code === 11000)
@@ -134,23 +159,39 @@ router.post('/register', limiter(15 * 60 * 1000, 5), async (req, res, next) => {
   }
 });
 
-router.post('/login', limiter(15 * 60 * 1000, 8), async (req, res, next) => {
+router.post('/login', rateLimit({ name: 'login', windowMs: 15 * 60 * 1000, max: 8, includeEmail: true }), async (req, res, next) => {
   try {
     const email = String(req.body.email || '')
       .trim()
       .toLowerCase();
 
     const user = await User.findOne({ email }).select('+password');
-    if (!user || !user.isActive || !(await user.comparePassword(String(req.body.password || ''))))
+    if (!user || !user.isActive || !(await user.comparePassword(String(req.body.password || '')))) {
+      await recordAuthEvent(req, 'login', { user, email, successful: false });
       return res.status(401).json({ message: 'Incorrect email or password' });
-    await issueSession(user, res);
+    }
+    if (enabled('REQUIRE_EMAIL_VERIFICATION') && user.emailVerified === false) {
+      return res.status(403).json({ message: 'Verify your email before signing in.' });
+    }
+    if (enabled('REQUIRE_PRIVILEGED_MFA') && ['teacher', 'moderator'].includes(user.role)) {
+      const code = String(crypto.randomInt(100000, 1000000));
+      const challenge = crypto.randomBytes(32).toString('base64url');
+      user.mfaChallengeHash = hash(challenge);
+      user.mfaCodeHash = hash(code);
+      user.mfaExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await user.save({ validateBeforeSave: false });
+      await sendMfaCode({ to: user.email, code });
+      return res.status(202).json({ data: { mfaRequired: true, challenge } });
+    }
+    await issueSession(user, res, requestMetadata(req));
+    await recordAuthEvent(req, 'login', { user, email, successful: true });
     res.json({ data: { user: userData(user) } });
   } catch (error) {
     next(error);
   }
 });
 
-router.post('/refresh', async (req, res, next) => {
+router.post('/refresh', rateLimit({ name: 'refresh', windowMs: 15 * 60 * 1000, max: 60 }), async (req, res, next) => {
   try {
     const refreshToken = req.cookies.refreshToken;
     if (!refreshToken) return res.status(401).json({ message: 'Session expired' });
@@ -161,14 +202,70 @@ router.post('/refresh', async (req, res, next) => {
       (entry) => entry.tokenHash === hash(refreshToken) && entry.expiresAt > new Date()
     );
     if (!user || !user.isActive || !session) {
-      clearAuthCookies(res);
       return res.status(401).json({ message: 'Session expired' });
     }
     user.refreshTokens = user.refreshTokens.filter(
       (entry) => entry.tokenHash !== hash(refreshToken)
     );
-    await issueSession(user, res);
+    await issueSession(user, res, {
+      createdAt: session.createdAt,
+      ...requestMetadata(req),
+    });
     res.json({ data: { user: userData(user) } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/login/mfa', rateLimit({ name: 'login-mfa', windowMs: 15 * 60 * 1000, max: 8 }), async (req, res, next) => {
+  try {
+    const challenge = String(req.body.challenge || '');
+    const code = String(req.body.code || '');
+    const user = await User.findOne({
+      mfaChallengeHash: hash(challenge),
+      mfaCodeHash: hash(code),
+      mfaExpiresAt: { $gt: new Date() },
+      isActive: true,
+    }).select('+mfaChallengeHash +mfaCodeHash');
+    if (!user) return res.status(401).json({ message: 'The sign-in code is invalid or expired.' });
+    user.mfaChallengeHash = undefined;
+    user.mfaCodeHash = undefined;
+    user.mfaExpiresAt = undefined;
+    await issueSession(user, res, requestMetadata(req));
+    await recordAuthEvent(req, 'mfa-login', { user, successful: true });
+    res.json({ data: { user: userData(user) } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/verify-email', rateLimit({ name: 'verify-email', windowMs: 15 * 60 * 1000, max: 10 }), async (req, res, next) => {
+  try {
+    const token = String(req.body.token || '');
+    const user = await User.findOne({
+      emailVerificationTokenHash: hash(token),
+      emailVerificationExpiresAt: { $gt: new Date() },
+    }).select('+emailVerificationTokenHash');
+    if (!user) return res.status(400).json({ message: 'Verification link is invalid or expired.' });
+    user.emailVerified = true;
+    user.emailVerificationTokenHash = undefined;
+    user.emailVerificationExpiresAt = undefined;
+    await issueSession(user, res, requestMetadata(req));
+    await recordAuthEvent(req, 'email-verify', { user, successful: true });
+    res.json({ data: { user: userData(user) } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/resend-verification', rateLimit({ name: 'resend-verification', windowMs: 60 * 60 * 1000, max: 3, includeEmail: true }), async (req, res, next) => {
+  try {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const user = await User.findOne({ email, emailVerified: false }).select(
+      '+emailVerificationTokenHash'
+    );
+    if (user) await createEmailVerification(user);
+    res.json({ message: 'If verification is required, a new link has been sent.' });
   } catch (error) {
     next(error);
   }
@@ -182,6 +279,7 @@ router.post('/logout', async (req, res) => {
       { $pull: { refreshTokens: { tokenHash: hash(value) } } }
     );
   clearAuthCookies(res);
+  await recordAuthEvent(req, 'logout', { successful: true });
   res.status(204).end();
 });
 
@@ -191,20 +289,21 @@ router.post('/change-password', protect, async (req, res, next) => {
     const user = await User.findById(req.user._id).select('+password');
     if (!(await user.comparePassword(String(currentPassword || ''))))
       return res.status(401).json({ message: 'Current password is incorrect' });
-    if (String(newPassword || '').length < 8)
-      return res.status(400).json({ message: 'New password must be at least 8 characters.' });
+    const passwordError = validatePassword(newPassword);
+    if (passwordError) return res.status(400).json({ message: passwordError });
     user.password = newPassword;
     user.sessionVersion += 1;
     user.refreshTokens = [];
     await user.save();
     clearAuthCookies(res);
+    await recordAuthEvent(req, 'password-change', { user, successful: true });
     res.status(204).end();
   } catch (error) {
     next(error);
   }
 });
 
-router.post('/forgot-password', limiter(60 * 60 * 1000, 3), async (req, res, next) => {
+router.post('/forgot-password', rateLimit({ name: 'forgot-password', windowMs: 60 * 60 * 1000, max: 3, includeEmail: true }), async (req, res, next) => {
   try {
     const email = String(req.body.email || '')
       .trim()
@@ -227,12 +326,12 @@ router.post('/forgot-password', limiter(60 * 60 * 1000, 3), async (req, res, nex
   }
 });
 
-router.post('/reset-password', limiter(15 * 60 * 1000, 5), async (req, res, next) => {
+router.post('/reset-password', rateLimit({ name: 'reset-password', windowMs: 15 * 60 * 1000, max: 5 }), async (req, res, next) => {
   try {
     const token = String(req.body.token || ''),
       password = String(req.body.password || ''),
       confirmPassword = String(req.body.confirmPassword || '');
-    if (!token || password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password))
+    if (!token || validatePassword(password))
       return res.status(400).json({ message: 'Reset link or new password is invalid.' });
     if (password !== confirmPassword)
       return res.status(400).json({ message: 'Password confirmation does not match.' });
@@ -249,6 +348,7 @@ router.post('/reset-password', limiter(15 * 60 * 1000, 5), async (req, res, next
     user.refreshTokens = [];
     await user.save();
     clearAuthCookies(res);
+    await recordAuthEvent(req, 'password-reset', { user, successful: true });
     res.status(204).end();
   } catch (error) {
     next(error);
@@ -256,4 +356,39 @@ router.post('/reset-password', limiter(15 * 60 * 1000, 5), async (req, res, next
 });
 
 router.get('/me', protect, (req, res) => res.json({ data: userData(req.user) }));
+router.get('/sessions', protect, async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id).select('+refreshTokens');
+    const currentHash = req.cookies.refreshToken ? hash(req.cookies.refreshToken) : null;
+    const sessions = user.refreshTokens
+      .filter((session) => session.expiresAt > new Date())
+      .map((session) => ({
+        id: session._id,
+        createdAt: session.createdAt,
+        lastUsedAt: session.lastUsedAt,
+        expiresAt: session.expiresAt,
+        userAgent: session.userAgent || '',
+        ip: session.ip || '',
+        current: Boolean(currentHash && session.tokenHash === currentHash),
+      }));
+    res.json({ data: sessions });
+  } catch (error) {
+    next(error);
+  }
+});
+router.delete('/sessions/:id', protect, async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id).select('+refreshTokens');
+    const session = user.refreshTokens.id(req.params.id);
+    if (!session) return res.status(404).json({ message: 'Session not found.' });
+    const current = req.cookies.refreshToken && session.tokenHash === hash(req.cookies.refreshToken);
+    session.deleteOne();
+    await user.save();
+    if (current) clearAuthCookies(res);
+    await recordAuthEvent(req, 'session-revoke', { user, successful: true });
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
 module.exports = router;
