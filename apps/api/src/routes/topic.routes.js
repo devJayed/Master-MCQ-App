@@ -6,6 +6,21 @@ const Question = require('../models/Question');
 const { protect, allow } = require('../middleware/auth');
 const staff = [protect, allow('teacher', 'moderator')];
 
+const createAtNextOrder = async (payload, attemptsRemaining = 3) => {
+  const lastTopic = await Topic.findOne({ chapterId: payload.chapterId })
+    .sort({ order: -1 })
+    .select('order')
+    .lean();
+  try {
+    return await Topic.create({ ...payload, order: (lastTopic?.order || 0) + 1 });
+  } catch (error) {
+    // Another request may have claimed the same position after it was read.
+    if (error?.code === 11000 && attemptsRemaining > 1)
+      return createAtNextOrder(payload, attemptsRemaining - 1);
+    throw error;
+  }
+};
+
 router.get('/', async (req, res, next) => {
   try {
     const filter = { isActive: true };
@@ -21,7 +36,8 @@ router.post('/', ...staff, async (req, res, next) => {
     const chapter = await Chapter.findOne({ _id: req.body.chapterId, isActive: true });
     if (!chapter)
       return res.status(400).json({ message: 'Select an active chapter for this topic.' });
-    res.status(201).json({ data: await Topic.create(req.body) });
+    const data = await createAtNextOrder({ ...req.body, chapterId: chapter._id });
+    res.status(201).json({ data });
   } catch (error) {
     next(error);
   }

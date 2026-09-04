@@ -1,6 +1,12 @@
 const multer = require('multer');
 const XLSX = require('xlsx');
 const { buildBoardTag, getBoardShortName } = require('../services/boardTag.service');
+const {
+  QUESTION_TYPES,
+  WRITTEN_QUESTION_TYPES,
+  MCQ_TYPE_FILTER,
+  normalizeQuestionType,
+} = require('../constants/questionTypes');
 const router = require('express').Router(),
   Question = require('../models/Question'),
   Topic = require('../models/Topic'),
@@ -32,7 +38,7 @@ const upload = multer({
 
 router.get('/', async (req, res, next) => {
   try {
-    const filter = { status: 'published', isDeleted: false };
+    const filter = { status: 'published', isDeleted: false, ...MCQ_TYPE_FILTER };
     if (req.query.chapterId) filter.chapterId = req.query.chapterId;
     if (req.query.topicId) filter.topicId = req.query.topicId;
     if (req.query.subtopicId) filter.subtopicId = req.query.subtopicId;
@@ -93,6 +99,13 @@ router.get('/manage', protect, allow('teacher', 'moderator'), async (req, res, n
     if (req.query.chapterId) filter.chapterId = req.query.chapterId;
     if (req.query.topicId) filter.topicId = req.query.topicId;
     if (req.query.subtopicId) filter.subtopicId = req.query.subtopicId;
+    if (req.query.difficulty) filter.difficulty = req.query.difficulty;
+    if (req.query.sourceType) filter.sourceType = req.query.sourceType;
+    if (req.query.questionType !== undefined) {
+      const questionType = normalizeQuestionType(req.query.questionType);
+      if (Number.isNaN(questionType)) return res.status(400).json({ message: 'Question type must be between 0 and 4.' });
+      filter.questionType = questionType;
+    }
     if (req.query.search) {
       const search = String(req.query.search)
         .slice(0, 100)
@@ -100,6 +113,8 @@ router.get('/manage', protect, allow('teacher', 'moderator'), async (req, res, n
       filter.$or = [
         { 'question.bn': { $regex: search, $options: 'i' } },
         { 'question.en': { $regex: search, $options: 'i' } },
+        { 'questionContent.bn.text': { $regex: search, $options: 'i' } },
+        { 'questionContent.en.text': { $regex: search, $options: 'i' } },
         { tags: { $regex: search, $options: 'i' } },
       ];
     }
@@ -132,6 +147,64 @@ router.get('/manage', protect, allow('teacher', 'moderator'), async (req, res, n
   }
 });
 
+router.get('/study', protect, async (req, res, next) => {
+  try {
+    const requestedTypes = String(req.query.questionType || '')
+      .split(',').filter(Boolean).map(normalizeQuestionType);
+    if (requestedTypes.some(Number.isNaN) || requestedTypes.some((type) => !WRITTEN_QUESTION_TYPES.includes(type)))
+      return res.status(400).json({ message: 'Study question types must be between 1 and 4.' });
+    const filter = {
+      status: 'published',
+      isDeleted: false,
+      questionType: { $in: requestedTypes.length ? requestedTypes : WRITTEN_QUESTION_TYPES },
+    };
+    if (req.query.chapterId) filter.chapterId = req.query.chapterId;
+    if (req.query.topicId) filter.topicId = req.query.topicId;
+    if (req.query.subtopicId) filter.subtopicId = req.query.subtopicId;
+    if (req.query.difficulty) filter.difficulty = req.query.difficulty;
+    if (req.query.sourceType) filter.sourceType = req.query.sourceType;
+    if (req.query.search) {
+      const search = String(req.query.search)
+        .slice(0, 100)
+        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.$or = [
+        { 'question.bn': { $regex: search, $options: 'i' } },
+        { 'question.en': { $regex: search, $options: 'i' } },
+        { 'questionContent.bn.text': { $regex: search, $options: 'i' } },
+        { 'questionContent.en.text': { $regex: search, $options: 'i' } },
+        { tags: { $regex: search, $options: 'i' } },
+      ];
+    }
+    const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
+    const pageSize = Math.min(Math.max(Number.parseInt(req.query.pageSize, 10) || 20, 1), 50);
+    const total = await Question.countDocuments(filter);
+    const data = await Question.find(filter)
+      .select('questionType chapterId topicId subtopicId stimulus question questionContent answer answerContent tags difficulty sourceType board year status')
+      .populate('chapterId topicId subtopicId', 'name')
+      .sort({ questionType: 1, createdAt: 1 })
+      .skip((page - 1) * pageSize).limit(pageSize).lean();
+    res.json({ data, pagination: { page, pageSize, total, totalPages: Math.max(Math.ceil(total / pageSize), 1) } });
+  } catch (error) { next(error); }
+});
+
+const prepareQuestionPayload = (body) => {
+  const questionType = normalizeQuestionType(body.questionType);
+  if (Number.isNaN(questionType)) throw new Error('Question type must be between 0 and 4.');
+  const payload = { ...body, questionType };
+  if (questionType === QUESTION_TYPES.MCQ) {
+    delete payload.answer;
+    delete payload.answerContent;
+  } else {
+    payload.options = [];
+    payload.optionContent = [];
+    delete payload.correctAnswer;
+    payload.explanation = { bn: '', en: '' };
+    payload.explanationContent = { bn: [], en: [] };
+    if (![3, 4].includes(questionType)) delete payload.stimulus;
+  }
+  return removeEmptySubtopic(payload);
+};
+
 router.get('/:id/manage', protect, allow('teacher', 'moderator'), async (req, res, next) => {
   try {
     const data = await Question.findOne({ _id: req.params.id, isDeleted: false });
@@ -144,9 +217,9 @@ router.get('/:id/manage', protect, allow('teacher', 'moderator'), async (req, re
 
 router.post('/', protect, allow('teacher', 'moderator'), async (req, res, next) => {
   try {
-    const body = removeEmptySubtopic(req.body);
+    const body = prepareQuestionPayload(req.body);
     await assertQuestionHierarchy(body);
-    const payload = body.status === 'published' ? await fillMissingEnglish(body) : body;
+    const payload = body.status === 'published' && body.questionType === QUESTION_TYPES.MCQ ? await fillMissingEnglish(body) : body;
 
     const question = await Question.create({
       ...payload,
@@ -162,11 +235,14 @@ router.patch('/:id', protect, allow('teacher', 'moderator'), async (req, res, ne
   try {
     const existing = await Question.findById(req.params.id);
     if (!existing) return res.status(404).json({ message: 'Question not found.' });
-    const body = removeEmptySubtopic(req.body);
+    const requestedType = normalizeQuestionType(req.body.questionType ?? existing.questionType);
+    if (requestedType !== normalizeQuestionType(existing.questionType))
+      return res.status(409).json({ message: 'Question type cannot be changed after creation.' });
+    const body = prepareQuestionPayload({ ...req.body, questionType: requestedType });
     const candidate = { ...existing.toObject(), ...body };
     await assertQuestionHierarchy(candidate);
     const payload =
-      candidate.status === 'published' ? await fillMissingEnglish(candidate) : candidate;
+      candidate.status === 'published' && candidate.questionType === QUESTION_TYPES.MCQ ? await fillMissingEnglish(candidate) : candidate;
     const data = await Question.findByIdAndUpdate(
       req.params.id,
       { ...payload, updatedBy: req.user._id },
@@ -182,7 +258,7 @@ router.get('/import/template', protect, allow('teacher', 'moderator'), async (re
   try {
     const workbook = await buildQuestionImportTemplate();
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-    res.setHeader('Content-Disposition', 'attachment; filename="mcq-import-template.xlsx"');
+    res.setHeader('Content-Disposition', 'attachment; filename="question-bank-import-template.xlsx"');
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -254,7 +330,7 @@ router.post('/translate', protect, allow('teacher', 'moderator'), async (req, re
   }
 });
 
-router.patch('/:id/restore', protect, allow('teacher'), async (req, res, next) => {
+router.patch('/:id/restore', protect, allow('teacher', 'moderator'), async (req, res, next) => {
   try {
     const data = await Question.findOneAndUpdate(
       { _id: req.params.id, isDeleted: true },

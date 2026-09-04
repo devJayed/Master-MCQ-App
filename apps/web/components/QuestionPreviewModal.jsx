@@ -7,6 +7,7 @@ const text = (language, bn, en) => (language === 'bn' ? bn : en);
 
 export default function QuestionPreviewModal({ question, language, onClose }) {
   if (!question) return null;
+  const isMcq = question.questionType === 0 || question.questionType === 'single_choice' || question.questionType == null;
 
   return (
     <div
@@ -22,7 +23,7 @@ export default function QuestionPreviewModal({ question, language, onClose }) {
         <header className="flex items-center justify-between border-b border-base-300 px-5 py-4">
           <div>
             <p className="text-[10px] font-bold tracking-widest text-primary uppercase">
-              {text(language, 'শিক্ষার্থী পরীক্ষার দৃশ্য', 'Student test view')}
+              {isMcq ? text(language, 'শিক্ষার্থী পরীক্ষার দৃশ্য', 'Student test view') : text(language, 'শিক্ষার্থী পাঠের দৃশ্য', 'Student study view')}
             </p>
             <h2 id="question-preview-title" className="mt-1 font-display text-xl font-bold">
               {text(language, 'মূল প্রশ্নের প্রিভিউ', 'Original question preview')}
@@ -66,14 +67,18 @@ export default function QuestionPreviewModal({ question, language, onClose }) {
               </div>
             ))}
           </div>
+          {!isMcq && <div className="mt-6 rounded-box bg-base-200 p-4">
+            <b className="text-sm">{text(language, 'উত্তর', 'Answer')}</b>
+            <RichContent className="mt-2" content={question.answerContent} fallback={question.answer} language={language} />
+          </div>}
         </div>
 
         <footer className="border-t border-base-300 px-5 py-3 text-xs text-base-content/55">
-          {text(
+          {isMcq ? text(
             language,
             'সঠিক উত্তর ও ব্যাখ্যা লুকানো আছে—পরীক্ষার সময় শিক্ষার্থী যেভাবে প্রশ্নটি দেখে, এটি সেই দৃশ্য।',
             'The correct answer and explanation are hidden to match the student test experience.'
-          )}
+          ) : text(language, 'এটি লিখিত প্রশ্নের পাঠ ও উত্তর দৃশ্য।', 'This is the written-question study and answer view.')}
         </footer>
       </section>
     </div>

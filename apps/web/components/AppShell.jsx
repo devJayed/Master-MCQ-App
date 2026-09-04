@@ -38,6 +38,7 @@ const roleConfig = {
     links: [
       ['/student/dashboard', 'Dashboard', LayoutDashboard],
       ['/student/practice', 'Practice', BookOpen],
+      ['/student/questions', 'Written Questions', BookOpen, 'লিখিত প্রশ্ন'],
       ['/student/syllabus', 'Syllabus', BookOpen],
       ['/student/create-test', 'Create Test', PlusCircle],
       ['/student/history', 'Exam History', ClipboardList],
@@ -126,7 +127,7 @@ function LanguageToggle({ language, onToggle }) {
   );
 }
 
-function Navigation({ config, role, pathname, onNavigate, isGuest }) {
+function Navigation({ config, role, pathname, onNavigate, isGuest, language }) {
   return (
     <>
       <Link
@@ -145,7 +146,7 @@ function Navigation({ config, role, pathname, onNavigate, isGuest }) {
         </span>
       </Link>
       <ul className="menu gap-1 p-0">
-        {config.links.filter(([href]) => !isGuest || !['/student/history', '/student/performance'].includes(href)).map(([href, label, Icon]) => (
+        {config.links.filter(([href]) => !isGuest || !['/student/history', '/student/performance'].includes(href)).map(([href, label, Icon, bnLabel]) => (
           <li key={href}>
             <Link
               onClick={onNavigate}
@@ -153,7 +154,7 @@ function Navigation({ config, role, pathname, onNavigate, isGuest }) {
               href={href}
             >
               <Icon size={18} />
-              {label}
+              {language === 'bn' && bnLabel ? bnLabel : label}
             </Link>
           </li>
         ))}
@@ -209,7 +210,7 @@ export default function AppShell({ children, role = 'student' }) {
   return (
     <div className="min-h-screen lg:flex">
       <aside className="hidden w-64 shrink-0 border-r border-base-300 bg-base-100 p-5 lg:flex lg:flex-col">
-        <Navigation config={config} role={role} pathname={pathname} isGuest={!user} />
+        <Navigation config={config} role={role} pathname={pathname} isGuest={!user} language={language} />
       </aside>
       <div
         aria-hidden={!drawerOpen}
@@ -237,6 +238,7 @@ export default function AppShell({ children, role = 'student' }) {
             pathname={pathname}
             onNavigate={() => setDrawerOpen(false)}
             isGuest={!user}
+            language={language}
           />
         </aside>
       </div>

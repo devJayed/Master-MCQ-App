@@ -3,6 +3,7 @@ const router = require('express').Router(),
   Question = require('../models/Question'),
   Chapter = require('../models/Chapter'),
   { protect } = require('../middleware/auth');
+const { MCQ_TYPE_FILTER } = require('../constants/questionTypes');
 router.post('/', protect, async (req, res, next) => {
   try {
     const { submissionKey, questionIds = [], answers = [] } = req.body;
@@ -13,7 +14,12 @@ router.post('/', protect, async (req, res, next) => {
     if (uniqueIds.length !== questionIds.length) {
       return res.status(400).json({ message: 'A test cannot contain duplicate questions.' });
     }
-    const questions = await Question.find({ _id: { $in: uniqueIds }, isDeleted: false }).lean();
+    const questions = await Question.find({
+      _id: { $in: uniqueIds },
+      status: 'published',
+      isDeleted: false,
+      ...MCQ_TYPE_FILTER,
+    }).lean();
     const questionById = Object.fromEntries(questions.map((question) => [String(question._id), question]));
     if (questions.length !== questionIds.length) {
       return res.status(400).json({ message: 'One or more submitted questions are unavailable.' });

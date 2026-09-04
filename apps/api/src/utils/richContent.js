@@ -12,4 +12,14 @@ const hasMeaningfulBlock = (block) => {
 const hasRichLanguage = (content, language) =>
   Array.isArray(content?.[language]) && content[language].some(hasMeaningfulBlock);
 
-module.exports = { hasMeaningfulBlock, hasRichLanguage };
+const richLanguageToText = (content, language) =>
+  (Array.isArray(content?.[language]) ? content[language] : [])
+    .map((block) => {
+      if (block?.type === 'image') return [block.url, block.alt, block.caption].filter(Boolean).join(' ');
+      if (block?.type === 'table') return (block.rows || []).flat().join(' ');
+      return block?.text || '';
+    })
+    .join(' ')
+    .trim();
+
+module.exports = { hasMeaningfulBlock, hasRichLanguage, richLanguageToText };

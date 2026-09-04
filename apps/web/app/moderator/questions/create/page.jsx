@@ -15,6 +15,7 @@ const FIXED_STIMULUS_TITLE = {
 };
 
 const initialForm = {
+  questionType: 0,
   chapterId: '',
   topicId: '',
   subtopicId: '',
@@ -26,8 +27,10 @@ const initialForm = {
   correctAnswer: 'A',
   explanation: { bn: '', en: '' },
   explanationContent: { bn: [], en: [] },
+  answer: { bn: '', en: '' },
+  answerContent: { bn: [], en: [] },
   optionContent: ['A', 'B', 'C', 'D'].map((key) => ({ key, content: { bn: [], en: [] } })),
-  difficulty: 'easy',
+  difficulty: 'medium',
   sourceType: 'teacher',
   tags: [],
 };
@@ -40,6 +43,13 @@ const SOURCE_TYPES = {
   practice: ['অনুশীলন', 'Practice'],
   admission: ['অ্যাডমিশন ', 'Admission'],
 };
+const QUESTION_TYPES = [
+  [0, 'বহুনির্বাচনি প্রশ্ন', 'MCQ'],
+  [1, 'জ্ঞানমূলক প্রশ্ন', 'Knowledge question'],
+  [2, 'অনুধাবনমূলক প্রশ্ন', 'Comprehension question'],
+  [3, 'প্রয়োগমূলক প্রশ্ন', 'Application question'],
+  [4, 'উচ্চতর দক্ষতামূলক প্রশ্ন', 'Higher-order question'],
+];
 
 const hasStimulusContent = (stimulus) =>
   Boolean(
@@ -78,9 +88,7 @@ function LocalizedField({ label, value, onChange, language, multiline = false, r
       <label className="form-control">
         <span className="label-text font-semibold">
           {label} — English{' '}
-          <small className="font-normal text-base-content/50">
-            {text(language, '(ঐচ্ছিক)', '(optional)')}
-          </small>
+          {!readOnly && <small className="font-normal text-base-content/50">({text(language, 'ঐচ্ছিক', 'optional')})</small>}
         </span>
         <Field
           readOnly={readOnly}
@@ -135,6 +143,7 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
         setForm({
           ...initialForm,
           ...editorForm,
+          questionType: editorForm.questionType === 'single_choice' || editorForm.questionType == null ? 0 : Number(editorForm.questionType),
           subtopicId: editorForm.subtopicId || '',
           stimulus: {
             ...(editorForm.stimulus || initialForm.stimulus),
@@ -234,8 +243,20 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
         setMessage('Enter Bangla plain question text or Bangla rich question content.');
         return;
       }
-      if (status === 'published' && !hasPlain && !hasRich) {
+      if (form.questionType === 0 && status === 'published' && !hasPlain && !hasRich) {
         setMessage(`Add ${languageKey === 'bn' ? 'Bangla' : 'English'} question content before publishing.`);
+        return;
+      }
+    }
+    if (form.questionType !== 0) {
+      const hasPlainAnswer = Boolean(form.answer?.bn?.trim());
+      const hasRichAnswer = hasRichLanguage(form.answerContent, 'bn');
+      if (hasPlainAnswer && hasRichAnswer) {
+        setMessage('Use either plain or rich Bangla answer content, not both.');
+        return;
+      }
+      if (!hasPlainAnswer && !hasRichAnswer) {
+        setMessage('Enter Bangla plain answer text or Bangla rich answer content.');
         return;
       }
     }
@@ -244,7 +265,7 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
       const payload = {
         ...form,
         tags: tagsInput
-          .split(',')
+          .split(/[|,;]+/)
           .map((tag) => tag.trim())
           .filter(Boolean),
         status,
@@ -293,14 +314,14 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
           <p className="mt-2 text-sm text-base-content/60">
             {text(
               language,
-              'প্রথমে অধ্যায় ও টপিক বেছে নিন। বাংলা আবশ্যক; আপনার লেখা ইংরেজি বদলে দেওয়া হবে না।',
-              'Choose a chapter and topic first. Bangla is required; supplied English is never overwritten.'
+              'Excel টেমপ্লেটের একই ঘরগুলো পূরণ করুন। বাংলা আবশ্যক; ইংরেজি ঐচ্ছিক এবং প্রয়োজনে তৈরি করা যাবে।',
+              'Complete the same fields used by the Excel template. Bangla is required; English is optional and can be generated when needed.'
             )}
           </p>
         </div>
         <button
           type="button"
-          onClick={() => generate(['question', 'options', 'explanation'])}
+          onClick={() => generate(form.questionType === 0 ? ['question', 'options', 'explanation'] : ['question'])}
           disabled={busy}
           className="btn btn-outline border-primary text-primary"
         >
@@ -321,6 +342,18 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
       >
         <section className="card border border-base-300 bg-base-100">
           <div className="card-body gap-7">
+            <label className="form-control">
+              <span className="label-text font-semibold">{text(language, 'প্রশ্নের ধরন', 'Question type')}</span>
+              <select
+                className="select select-bordered mt-1"
+                value={form.questionType}
+                disabled={Boolean(questionId)}
+                onChange={(event) => update('questionType', Number(event.target.value))}
+              >
+                {QUESTION_TYPES.map(([value, bn, en]) => <option key={value} value={value}>{text(language, bn, en)}</option>)}
+              </select>
+              <span className="mt-1 text-xs text-base-content/50">{questionId ? text(language, 'তৈরির পরে ধরন পরিবর্তন করা যায় না।', 'Type cannot be changed after creation.') : text(language, 'ধরন অনুযায়ী প্রয়োজনীয় ঘর দেখানো হবে।', 'Required fields adapt to the selected type.')}</span>
+            </label>
             <div className="grid gap-4 md:grid-cols-3">
               <label className="form-control">
                 <span className="label-text font-semibold">
@@ -381,8 +414,8 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
                 </select>
               </label>
             </div>
-            <details className="rounded-box border border-primary/20 bg-primary/5 p-4">
-              <summary className="cursor-pointer font-semibold">Shared stimulus / passage (optional)</summary>
+            {[0, 3, 4].includes(form.questionType) && <details className="rounded-box border border-primary/20 bg-primary/5 p-4">
+              <summary className="cursor-pointer font-semibold">Shared stimulus / passage</summary>
               <p className="mt-2 text-xs text-base-content/60">Use the same group ID on related questions. Add passage text, code, diagrams, equations, or tables as ordered blocks.</p>
               <div className="mt-4 grid gap-3">
                 <label className="form-control">
@@ -390,9 +423,9 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
                   <input className="input input-bordered input-sm mt-1" value={form.stimulus?.groupId || ''} onChange={(event) => update('stimulus', { ...form.stimulus, groupId: event.target.value })} placeholder="e.g. hsc-ict-db-rb-2024-stimulus-1" />
                 </label>
                 <LocalizedField label="Stimulus instruction" language={language} value={FIXED_STIMULUS_TITLE} onChange={() => {}} multiline readOnly />
-                <RichContentEditor label="Stimulus content" language={language} value={form.stimulus?.content} onChange={(content) => update('stimulus', { ...form.stimulus, content })} />
+                <RichContentEditor label="Stimulus content" value={form.stimulus?.content} onChange={(content) => update('stimulus', { ...form.stimulus, content })} />
               </div>
-            </details>
+            </details>}
             <div>
               <div className="mb-2 flex justify-between">
                 <b>{text(language, 'প্রশ্ন', 'Question')}</b>
@@ -414,12 +447,12 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
                 multiline
               />
               <details className="mt-3">
-                <summary className="cursor-pointer text-sm font-semibold text-primary">Use rich question body (optional)</summary>
-                <p className="my-2 text-xs text-base-content/60">Use either plain text or rich content for each language. Adding rich content clears the corresponding plain text.</p>
-                <RichContentEditor label="Question body" language={language} value={form.questionContent} onChange={updateQuestionContent} />
+                <summary className="cursor-pointer text-sm font-semibold text-primary">Use rich question body</summary>
+                <p className="my-2 text-xs text-base-content/60">Use either plain text or rich content for each language. Rich question blocks map directly to Question Rich BN and Question Rich EN in Excel.</p>
+                <RichContentEditor label="Question body" value={form.questionContent} onChange={updateQuestionContent} />
               </details>
             </div>
-            <fieldset>
+            {form.questionType === 0 && <fieldset>
               <div className="mb-2 flex justify-between">
                 <legend className="font-semibold">{text(language, 'বিকল্পসমূহ', 'Options')}</legend>
                 <button
@@ -453,14 +486,14 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
                       required
                     />
                     <details className="mt-2">
-                      <summary className="cursor-pointer text-xs font-semibold text-primary">Rich option (optional)</summary>
-                      <RichContentEditor label={`Option ${option.key}`} language={language} value={form.optionContent?.find((item) => item.key === option.key)?.content} onChange={(content) => updateOptionContent(option.key, content)} />
+                      <summary className="cursor-pointer text-xs font-semibold text-primary">Add rich option content</summary>
+                      <RichContentEditor label={`Option ${option.key}`} value={form.optionContent?.find((item) => item.key === option.key)?.content} onChange={(content) => updateOptionContent(option.key, content)} />
                     </details>
                   </div>
                 ))}
               </div>
-            </fieldset>
-            <div>
+            </fieldset>}
+            {form.questionType === 0 ? <div>
               <div className="mb-2 flex justify-between">
                 <b>{text(language, 'ব্যাখ্যা', 'Explanation')}</b>
                 <button
@@ -481,10 +514,36 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
                 multiline
               />
               <details className="mt-3">
-                <summary className="cursor-pointer text-sm font-semibold text-primary">Use rich explanation (optional)</summary>
-                <RichContentEditor label="Explanation" language={language} value={form.explanationContent} onChange={(value) => update('explanationContent', value)} />
+                <summary className="cursor-pointer text-sm font-semibold text-primary">Add rich explanation content</summary>
+                <RichContentEditor label="Explanation" value={form.explanationContent} onChange={(value) => update('explanationContent', value)} />
               </details>
-            </div>
+            </div> : <div>
+              <div className="mb-2 flex justify-between">
+                <b>{text(language, 'উত্তর', 'Answer')}</b>
+              </div>
+              <LocalizedField
+                label={text(language, 'উত্তর', 'Answer')}
+                language={language}
+                value={form.answer}
+                onChange={(value) => {
+                  update('answer', value);
+                  if (value.bn?.trim() || value.en?.trim())
+                    setForm((current) => ({ ...current, answer: value, answerContent: {
+                      bn: value.bn?.trim() ? [] : current.answerContent.bn,
+                      en: value.en?.trim() ? [] : current.answerContent.en,
+                    } }));
+                }}
+                required={!hasRichLanguage(form.answerContent, 'bn')}
+                multiline
+              />
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm font-semibold text-primary">{text(language, 'সমৃদ্ধ উত্তর ব্যবহার করুন', 'Use rich answer')}</summary>
+                <RichContentEditor label="Answer" value={form.answerContent} onChange={(value) => setForm((current) => ({ ...current, answer: {
+                  bn: hasRichLanguage(value, 'bn') ? '' : current.answer.bn,
+                  en: hasRichLanguage(value, 'en') ? '' : current.answer.en,
+                }, answerContent: value }))} />
+              </details>
+            </div>}
           </div>
         </section>
         <aside className="space-y-5">
@@ -497,14 +556,15 @@ export function QuestionEditor({ questionId, basePath = '/moderator/questions' }
               <div className="mt-2 font-display text-lg font-bold" role="heading" aria-level={2}>
                 <RichContent content={form.questionContent} fallback={form.question} language={language} />
               </div>
-              {form.options.map((option) => (
+              {form.questionType === 0 && form.options.map((option) => (
                 <div className="mt-2 text-sm" key={option.key}>
                   <b>{option.key}.</b>{' '}
                   <RichContent content={form.optionContent?.find((item) => item.key === option.key)?.content} fallback={option.text} language={language} />
                 </div>
               ))}
               <div className="mt-4 border-t border-base-300 pt-3 text-xs">
-                <RichContent content={form.explanationContent} fallback={form.explanation} language={language} />
+                <b>{form.questionType === 0 ? text(language, 'ব্যাখ্যা', 'Explanation') : text(language, 'উত্তর', 'Answer')}</b>
+                <RichContent className="mt-1" content={form.questionType === 0 ? form.explanationContent : form.answerContent} fallback={form.questionType === 0 ? form.explanation : form.answer} language={language} />
               </div>
             </div>
           </section>

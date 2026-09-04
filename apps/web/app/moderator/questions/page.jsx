@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Search,
   Trash2,
+  X,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
@@ -32,13 +33,41 @@ const LABELS = {
   hard: ['কঠিন', 'Hard'],
 };
 
+const QUESTION_TYPES = [
+  ['0', 'এমসিকিউ', 'MCQ'],
+  ['1', 'জ্ঞানমূলক', 'Knowledge'],
+  ['2', 'অনুধাবনমূলক', 'Comprehension'],
+  ['3', 'প্রয়োগমূলক', 'Application'],
+  ['4', 'উচ্চতর দক্ষতামূলক', 'Higher order'],
+];
+const DIFFICULTIES = [
+  ['easy', 'সহজ', 'Easy'], ['medium', 'মাঝারি', 'Medium'], ['hard', 'কঠিন', 'Hard'],
+];
+const SOURCE_TYPES = [
+  ['board', 'বোর্ড', 'Board'], ['teacher', 'শিক্ষক', 'Teacher'],
+  ['model_test', 'মডেল টেস্ট', 'Model test'], ['practice', 'অনুশীলন', 'Practice'],
+  ['admission', 'ভর্তি পরীক্ষা', 'Admission'],
+];
+const STATUS_OPTIONS = ['draft', 'published', 'archived'];
+const QUESTION_PREFIXES = {
+  1: ['ক)', 'A)'],
+  2: ['খ)', 'B)'],
+  3: ['গ)', 'C)'],
+  4: ['ঘ)', 'D)'],
+};
+
 export default function ModeratorQuestions() {
   const { language } = useLanguage();
   const [questions, setQuestions] = useState([]),
     [chapters, setChapters] = useState([]),
-    [topics, setTopics] = useState([]);
+    [topics, setTopics] = useState([]),
+    [subtopics, setSubtopics] = useState([]);
   const [chapterId, setChapterId] = useState(''),
     [topicId, setTopicId] = useState(''),
+    [subtopicId, setSubtopicId] = useState(''),
+    [questionType, setQuestionType] = useState(''),
+    [difficulty, setDifficulty] = useState(''),
+    [sourceType, setSourceType] = useState(''),
     [status, setStatus] = useState(''),
     [archived, setArchived] = useState(false),
     [search, setSearch] = useState('');
@@ -50,17 +79,30 @@ export default function ModeratorQuestions() {
     [total, setTotal] = useState(0),
     [loading, setLoading] = useState(true);
   const [previewQuestion, setPreviewQuestion] = useState(null);
+  const [updatingStatusId, setUpdatingStatusId] = useState('');
   const local = (value, fallback) =>
     value?.[language] ||
     (language === 'bn' ? value?.bn || value?.en : value?.en || value?.bn) ||
     fallback;
   const name = (item) => local(item?.name, '—');
   const label = (value) => text(language, ...(LABELS[value] || [value, value]));
+  const sourceLabel = (value) => {
+    const source = SOURCE_TYPES.find(([key]) => key === value);
+    return source ? text(language, source[1], source[2]) : value;
+  };
+  const questionPrefix = (type) => {
+    const prefix = QUESTION_PREFIXES[type];
+    return prefix ? text(language, prefix[0], prefix[1]) : '';
+  };
 
   const loadQuestions = useCallback(async () => {
     const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (chapterId) query.set('chapterId', chapterId);
     if (topicId) query.set('topicId', topicId);
+    if (subtopicId) query.set('subtopicId', subtopicId);
+    if (questionType !== '') query.set('questionType', questionType);
+    if (difficulty) query.set('difficulty', difficulty);
+    if (sourceType) query.set('sourceType', sourceType);
     if (status && !archived) query.set('status', status);
     if (search.trim()) query.set('search', search.trim());
     if (archived) query.set('archived', 'true');
@@ -81,7 +123,7 @@ export default function ModeratorQuestions() {
     } finally {
       setLoading(false);
     }
-  }, [archived, chapterId, language, page, pageSize, search, status, topicId]);
+  }, [archived, chapterId, difficulty, language, page, pageSize, questionType, search, sourceType, status, subtopicId, topicId]);
 
   useEffect(() => {
     api('/chapters')
@@ -90,17 +132,37 @@ export default function ModeratorQuestions() {
   }, []);
   useEffect(() => {
     setTopicId('');
+    setSubtopicId('');
     if (!chapterId) return setTopics([]);
     api(`/topics?chapterId=${chapterId}`)
       .then((result) => setTopics(result.data || []))
       .catch((e) => setError(e.message));
   }, [chapterId]);
   useEffect(() => {
+    setSubtopicId('');
+    if (!topicId) return setSubtopics([]);
+    api(`/subtopics?topicId=${topicId}`)
+      .then((result) => setSubtopics(result.data || []))
+      .catch((e) => setError(e.message));
+  }, [topicId]);
+  useEffect(() => {
     loadQuestions();
   }, [loadQuestions]);
   useEffect(() => {
     setPage(1);
-  }, [archived, chapterId, pageSize, search, status, topicId]);
+  }, [archived, chapterId, difficulty, pageSize, questionType, search, sourceType, status, subtopicId, topicId]);
+
+  const clearFilters = () => {
+    setChapterId('');
+    setTopicId('');
+    setSubtopicId('');
+    setQuestionType('');
+    setDifficulty('');
+    setSourceType('');
+    setStatus('');
+    setSearch('');
+    setArchived(false);
+  };
 
   const archiveQuestion = async (id) => {
     if (
@@ -139,6 +201,34 @@ export default function ModeratorQuestions() {
       await loadQuestions();
     } catch (e) {
       setError(e.message);
+    }
+  };
+
+  const updateQuestionStatus = async (question, nextStatus) => {
+    if (nextStatus === question.status) return;
+    setUpdatingStatusId(question._id);
+    setNotice('');
+    try {
+      if (nextStatus === 'archived') {
+        await api(`/questions/${question._id}`, { method: 'DELETE' });
+      } else {
+        if (question.status === 'archived' || question.isDeleted) {
+          await api(`/questions/${question._id}/restore`, { method: 'PATCH' });
+        }
+        if (nextStatus === 'published') {
+          await api(`/questions/${question._id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: 'published' }),
+          });
+        }
+      }
+      setNotice(text(language, 'প্রশ্নের অবস্থা আপডেট করা হয়েছে।', 'Question status updated.'));
+      setError('');
+      await loadQuestions();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUpdatingStatusId('');
     }
   };
 
@@ -196,7 +286,7 @@ export default function ModeratorQuestions() {
         ))}
       </section>
       <section className="mt-5 rounded-box border border-base-300 bg-base-100 p-4 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="input input-bordered flex items-center gap-2">
             <Search size={17} />
             <input
@@ -235,6 +325,51 @@ export default function ModeratorQuestions() {
             ))}
           </select>
           <select
+            value={subtopicId}
+            disabled={!topicId}
+            onChange={(e) => setSubtopicId(e.target.value)}
+            className="select select-bordered"
+            aria-label={text(language, 'সাবটপিক', 'Subtopic')}
+          >
+            <option value="">{text(language, 'সব সাবটপিক', 'All subtopics')}</option>
+            {subtopics.map((item) => (
+              <option key={item._id} value={item._id}>{name(item)}</option>
+            ))}
+          </select>
+          <select
+            value={questionType}
+            onChange={(e) => setQuestionType(e.target.value)}
+            className="select select-bordered"
+            aria-label={text(language, 'প্রশ্নের ধরন', 'Question type')}
+          >
+            <option value="">{text(language, 'সব ধরনের প্রশ্ন', 'All question types')}</option>
+            {QUESTION_TYPES.map(([value, bn, en]) => (
+              <option key={value} value={value}>{text(language, bn, en)}</option>
+            ))}
+          </select>
+          <select
+            value={difficulty}
+            onChange={(e) => setDifficulty(e.target.value)}
+            className="select select-bordered"
+            aria-label={text(language, 'কঠিনতার স্তর', 'Difficulty level')}
+          >
+            <option value="">{text(language, 'সব কঠিনতার স্তর', 'All difficulty levels')}</option>
+            {DIFFICULTIES.map(([value, bn, en]) => (
+              <option key={value} value={value}>{text(language, bn, en)}</option>
+            ))}
+          </select>
+          <select
+            value={sourceType}
+            onChange={(e) => setSourceType(e.target.value)}
+            className="select select-bordered"
+            aria-label={text(language, 'উৎসের ধরন', 'Source type')}
+          >
+            <option value="">{text(language, 'সব উৎস', 'All source types')}</option>
+            {SOURCE_TYPES.map(([value, bn, en]) => (
+              <option key={value} value={value}>{text(language, bn, en)}</option>
+            ))}
+          </select>
+          <select
             value={status}
             disabled={archived}
             onChange={(e) => setStatus(e.target.value)}
@@ -257,6 +392,10 @@ export default function ModeratorQuestions() {
             {archived
               ? text(language, 'সক্রিয় প্রশ্ন দেখুন', 'View active')
               : text(language, 'আর্কাইভ দেখুন', 'View archive')}
+          </button>
+          <button type="button" onClick={clearFilters} className="btn btn-ghost">
+            <X size={16} />
+            {text(language, 'ফিল্টার মুছুন', 'Clear filters')}
           </button>
         </div>
         <p className="mt-3 flex items-center gap-2 text-xs text-base-content/45">
@@ -287,19 +426,24 @@ export default function ModeratorQuestions() {
                 <th>{text(language, 'অধ্যায় / টপিক', 'Chapter / topic')}</th>
                 <th>{text(language, 'কঠিনতা', 'Difficulty')}</th>
                 <th>{text(language, 'অবস্থা', 'Status')}</th>
+                <th>{text(language, 'উৎস ও ট্যাগ', 'Source & tags')}</th>
                 <th className="text-right">{text(language, 'কার্যক্রম', 'Actions')}</th>
               </tr>
             </thead>
             <tbody>
-              {loading ? <TableRowsSkeleton rows={pageSize > 5 ? 5 : pageSize} /> : questions.map((q) => (
+              {loading ? <TableRowsSkeleton rows={pageSize > 5 ? 5 : pageSize} columns={6} /> : questions.map((q) => (
                 <tr key={q._id}>
                   <td>
-                    <RichContent
-                      content={q.questionContent}
-                      fallback={q.question}
-                      language={language}
-                      className="max-w-md text-sm font-semibold"
-                    />
+                    <div className="flex max-w-md items-start gap-2 text-sm font-semibold">
+                      {questionPrefix(q.questionType) && (
+                        <span className="shrink-0">{questionPrefix(q.questionType)}</span>
+                      )}
+                      <RichContent
+                        content={q.questionContent}
+                        fallback={q.question}
+                        language={language}
+                      />
+                    </div>
                   </td>
                   <td className="text-xs">
                     {name(q.chapterId)}
@@ -313,11 +457,29 @@ export default function ModeratorQuestions() {
                     <span className="badge badge-ghost">{label(q.difficulty)}</span>
                   </td>
                   <td>
-                    <span
-                      className={`badge ${q.status === 'published' ? 'badge-success' : q.status === 'draft' ? 'badge-warning' : 'badge-ghost'}`}
+                    <select
+                      value={q.status}
+                      disabled={updatingStatusId === q._id}
+                      onChange={(event) => updateQuestionStatus(q, event.target.value)}
+                      className={`select select-sm min-w-28 ${q.status === 'published' ? 'select-success' : q.status === 'draft' ? 'select-warning' : 'select-bordered'}`}
+                      aria-label={text(language, 'প্রশ্নের অবস্থা পরিবর্তন করুন', 'Change question status')}
                     >
-                      {label(q.status)}
-                    </span>
+                      {STATUS_OPTIONS.map((value) => (
+                        <option key={value} value={value}>{label(value)}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <div className="min-w-32">
+                      <span className="text-xs font-semibold">{sourceLabel(q.sourceType)}</span>
+                      {!!q.tags?.length && (
+                        <div className="mt-1 flex max-w-48 flex-wrap gap-1">
+                          {q.tags.map((tag) => (
+                            <span key={tag} className="badge badge-ghost badge-sm">{tag}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td>
                     <div className="flex justify-end gap-2">
@@ -365,7 +527,7 @@ export default function ModeratorQuestions() {
               ))}
               {!loading && !questions.length && (
                 <tr>
-                  <td colSpan="5" className="py-12 text-center text-base-content/60">
+                  <td colSpan="6" className="py-12 text-center text-base-content/60">
                     {archived
                       ? text(
                           language,

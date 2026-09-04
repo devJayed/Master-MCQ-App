@@ -51,7 +51,7 @@ export default function ImportQuestionsPanel({ basePath = '/moderator/questions'
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = 'mcq-import-template.xlsx';
+      anchor.download = 'question-bank-import-template.xlsx';
       anchor.click();
       URL.revokeObjectURL(url);
       setMessage(

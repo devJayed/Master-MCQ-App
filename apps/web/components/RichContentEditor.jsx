@@ -51,45 +51,98 @@ function BlockFields({ block, onChange }) {
   );
 }
 
-export default function RichContentEditor({ value, onChange, language, label }) {
-  const blocks = Array.isArray(value?.[language]) ? value[language] : [];
-  const setBlocks = (next) => onChange({ ...(value || {}), [language]: next });
-  const update = (index, block) => setBlocks(blocks.map((item, itemIndex) => itemIndex === index ? block : item));
+function BilingualBlock({ block, index, count, onUpdate, onMove, onDelete }) {
+  const type = block.bn?.type || block.en?.type || 'text';
+
+  return (
+    <section className="rounded-box border border-base-300 bg-base-100 p-3">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="badge badge-primary badge-sm">{index + 1}</span>
+          <span className="badge badge-ghost badge-sm capitalize">{type}</span>
+        </div>
+        <div className="flex">
+          <button type="button" className="btn btn-ghost btn-xs" disabled={!index} onClick={() => onMove(-1)} aria-label={`Move ${type} block up`}><ArrowUp size={13} /></button>
+          <button type="button" className="btn btn-ghost btn-xs" disabled={index === count - 1} onClick={() => onMove(1)} aria-label={`Move ${type} block down`}><ArrowDown size={13} /></button>
+          <button type="button" className="btn btn-ghost btn-xs text-error" onClick={onDelete} aria-label={`Delete ${type} block`}><Trash2 size={13} /></button>
+        </div>
+      </div>
+      <div className="grid gap-3 xl:grid-cols-2">
+        <div className="grid content-start gap-2">
+          <span className="text-xs font-semibold">বাংলা</span>
+          <BlockFields block={block.bn || emptyBlock(type)} onChange={(next) => onUpdate('bn', next)} />
+        </div>
+        <div className="grid content-start gap-2">
+          <span className="text-xs font-semibold">English <small className="font-normal text-base-content/50">(optional)</small></span>
+          <BlockFields block={block.en || emptyBlock(type)} onChange={(next) => onUpdate('en', next)} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export default function RichContentEditor({ value, onChange, label }) {
+  const bnBlocks = Array.isArray(value?.bn) ? value.bn : [];
+  const enBlocks = Array.isArray(value?.en) ? value.en : [];
+  const blockCount = Math.max(bnBlocks.length, enBlocks.length);
+  const blocks = Array.from({ length: blockCount }, (_, index) => {
+    const type = bnBlocks[index]?.type || enBlocks[index]?.type || 'text';
+    return {
+      bn: bnBlocks[index] || emptyBlock(type),
+      en: enBlocks[index] || emptyBlock(type),
+    };
+  });
+
+  const commit = (nextBlocks) =>
+    onChange({
+      ...(value || {}),
+      bn: nextBlocks.map((block) => block.bn),
+      en: nextBlocks.map((block) => block.en),
+    });
+
+  const add = (type) => commit([...blocks, { bn: emptyBlock(type), en: emptyBlock(type) }]);
+  const update = (index, language, next) =>
+    commit(
+      blocks.map((block, itemIndex) =>
+        itemIndex === index ? { ...block, [language]: next } : block
+      )
+    );
   const move = (index, offset) => {
     const target = index + offset;
     if (target < 0 || target >= blocks.length) return;
     const next = [...blocks];
     [next[index], next[target]] = [next[target], next[index]];
-    setBlocks(next);
+    commit(next);
   };
 
   return (
-    <div className="rounded-box border border-base-300 p-3">
+    <div className="rounded-box border border-base-300 bg-base-200/40 p-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <b className="text-sm">{label} · {language === 'bn' ? 'বাংলা' : 'English'}</b>
+        <div>
+          <b className="text-sm">{label}</b>
+          <p className="mt-0.5 text-xs text-base-content/60">Each block keeps its Bangla and optional English content together.</p>
+        </div>
         <div className="dropdown dropdown-end">
           <button type="button" tabIndex={0} className="btn btn-outline btn-xs"><Plus size={13} /> Add block</button>
           <ul tabIndex={0} className="menu dropdown-content z-20 mt-1 w-40 rounded-box border border-base-300 bg-base-100 p-2 shadow">
             {['text', 'code', 'math', 'image', 'table'].map((type) => (
-              <li key={type}><button type="button" className="capitalize" onClick={() => setBlocks([...blocks, emptyBlock(type)])}>{type}</button></li>
+              <li key={type}><button type="button" className="capitalize" onClick={() => add(type)}>{type}</button></li>
             ))}
           </ul>
         </div>
       </div>
-      {!blocks.length && <p className="text-xs text-base-content/50">No rich blocks. Plain text will be used.</p>}
+      {!blocks.length && <p className="text-xs text-base-content/50">No content blocks added.</p>}
       <div className="space-y-3">
         {blocks.map((block, index) => (
-          <div key={index} className="rounded-box bg-base-200 p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="badge badge-ghost badge-sm capitalize">{block.type}</span>
-              <div className="flex">
-                <button type="button" className="btn btn-ghost btn-xs" disabled={!index} onClick={() => move(index, -1)} aria-label="Move block up"><ArrowUp size={13} /></button>
-                <button type="button" className="btn btn-ghost btn-xs" disabled={index === blocks.length - 1} onClick={() => move(index, 1)} aria-label="Move block down"><ArrowDown size={13} /></button>
-                <button type="button" className="btn btn-ghost btn-xs text-error" onClick={() => setBlocks(blocks.filter((_, itemIndex) => itemIndex !== index))} aria-label="Delete block"><Trash2 size={13} /></button>
-              </div>
-            </div>
-            <BlockFields block={block} onChange={(next) => update(index, next)} />
-          </div>
+          <BilingualBlock
+            key={index}
+            block={block}
+            index={index}
+            count={blocks.length}
+            onUpdate={(language, next) => update(index, language, next)}
+            onMove={(offset) => move(index, offset)}
+            onDelete={() => commit(blocks.filter((_, itemIndex) => itemIndex !== index))}
+          />
         ))}
       </div>
     </div>

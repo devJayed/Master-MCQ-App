@@ -1,5 +1,11 @@
 const mongoose = require('mongoose');
 const { hasRichLanguage } = require('../utils/richContent');
+const {
+  QUESTION_TYPES,
+  VALID_QUESTION_TYPES,
+  WRITTEN_QUESTION_TYPES,
+  STIMULUS_QUESTION_TYPES,
+} = require('../constants/questionTypes');
 
 const FIXED_STIMULUS_TITLE = {
   bn: 'নিচের উদ্দীপকের আলোকে পরবর্তী প্রশ্নটির উত্তর দাও',
@@ -75,18 +81,33 @@ const questionSchema = new mongoose.Schema(
       content: { type: localizedBlocks, default: () => ({}) },
     },
     questionContent: { type: localizedBlocks, default: () => ({}) },
-    questionType: { type: String, default: 'single_choice' },
+    questionType: {
+      type: Number,
+      enum: VALID_QUESTION_TYPES,
+      default: QUESTION_TYPES.MCQ,
+      required: true,
+      index: true,
+    },
     options: {
       type: [option],
       validate: {
-        validator: (items) => items.length === 4,
-        message: 'Exactly four options are required.',
+        validator(items) {
+          return this.questionType !== QUESTION_TYPES.MCQ || items.length === 4;
+        },
+        message: 'MCQ questions require exactly four options.',
       },
+      default: [],
     },
-    correctAnswer: { type: String, enum: ['A', 'B', 'C', 'D'], required: true },
-    explanation: { type: localizedText, required: true },
+    correctAnswer: {
+      type: String,
+      enum: ['A', 'B', 'C', 'D'],
+      required() { return this.questionType === QUESTION_TYPES.MCQ; },
+    },
+    explanation: { type: optionalLocalizedText, default: () => ({}) },
     explanationContent: { type: localizedBlocks, default: () => ({}) },
     optionContent: { type: [optionContent], default: [] },
+    answer: { type: optionalLocalizedText, default: () => ({}) },
+    answerContent: { type: localizedBlocks, default: () => ({}) },
     difficulty: { type: String, enum: ['easy', 'medium', 'hard'], default: 'medium' },
     sourceType: {
       type: String,
@@ -106,6 +127,7 @@ const questionSchema = new mongoose.Schema(
 
 questionSchema.index({ chapterId: 1, topicId: 1, subtopicId: 1, status: 1, isDeleted: 1 });
 questionSchema.index({ isDeleted: 1, updatedAt: -1 });
+questionSchema.index({ questionType: 1, chapterId: 1, topicId: 1, subtopicId: 1, status: 1, isDeleted: 1 });
 
 questionSchema.pre('validate', function enforceFixedStimulusInstruction(next) {
   const hasStimulus = Boolean(
@@ -135,8 +157,30 @@ questionSchema.pre('validate', function validateQuestionBodyChoice(next) {
   next();
 });
 
+questionSchema.pre('validate', function validateTypeSpecificContent(next) {
+  if (this.questionType === QUESTION_TYPES.MCQ) {
+    if (!this.explanation?.bn?.trim()) return next(new Error('Bangla explanation is required for MCQ questions.'));
+    return next();
+  }
+  if (!WRITTEN_QUESTION_TYPES.includes(this.questionType)) return next();
+  for (const language of ['bn', 'en']) {
+    const hasPlain = Boolean(this.answer?.[language]?.trim());
+    const hasRich = hasRichLanguage(this.answerContent, language);
+    if (hasPlain && hasRich)
+      return next(new Error(`Use either plain or rich answer content for ${language}, not both.`));
+    if (language === 'bn' && !hasPlain && !hasRich)
+      return next(new Error('Bangla answer text or Bangla rich answer content is required.'));
+  }
+  if (
+    STIMULUS_QUESTION_TYPES.includes(this.questionType) &&
+    !hasRichLanguage(this.stimulus?.content, 'bn')
+  ) return next(new Error('Application and higher-order questions require Bangla stimulus content.'));
+  next();
+});
+
 questionSchema.pre('validate', function validatePublishedBilingualContent(next) {
   if (this.status !== 'published') return next();
+  if (this.questionType !== QUESTION_TYPES.MCQ) return next();
   const missing = [];
   if (
     (!this.question?.bn && !hasRichLanguage(this.questionContent, 'bn')) ||
