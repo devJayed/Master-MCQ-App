@@ -65,28 +65,40 @@ const requestMetadata = (req) => ({
   userAgent: String(req.get('user-agent') || '').slice(0, 500),
   ip: req.ip,
 });
+const createAccessToken = (user) => {
+  const { accessSecret, accessExpiresIn } = getJwtConfig();
+  return {
+    token: jwt.sign(
+      { id: user._id, sessionVersion: user.sessionVersion },
+      accessSecret,
+      { expiresIn: accessExpiresIn.value }
+    ),
+    maxAge: accessExpiresIn.milliseconds,
+  };
+};
 const issueSession = async (user, res, metadata = {}) => {
-  const { accessSecret, accessExpiresIn, refreshExpiresIn } = getJwtConfig();
-  const accessToken = jwt.sign(
-    { id: user._id, sessionVersion: user.sessionVersion },
-    accessSecret,
-    { expiresIn: accessExpiresIn.value }
-  );
+  const { refreshExpiresIn } = getJwtConfig();
+  const access = createAccessToken(user);
   const refreshToken = crypto.randomBytes(48).toString('base64url');
   const expiresAt = new Date(Date.now() + refreshExpiresIn.milliseconds);
-  user.refreshTokens = (user.refreshTokens || [])
-    .filter((entry) => entry.expiresAt > new Date())
-    .slice(-4);
-  user.refreshTokens.push({
+  const session = {
     tokenHash: hash(refreshToken),
     expiresAt,
     createdAt: metadata.createdAt || new Date(),
     lastUsedAt: new Date(),
     userAgent: metadata.userAgent,
     ip: metadata.ip,
-  });
-  await user.save();
-  res.cookie('accessToken', accessToken, cookieOptions(accessExpiresIn.milliseconds));
+  };
+  const now = new Date();
+  await User.updateOne(
+    { _id: user._id },
+    { $pull: { refreshTokens: { expiresAt: { $lte: now } } } }
+  );
+  await User.updateOne(
+    { _id: user._id },
+    { $push: { refreshTokens: { $each: [session], $slice: -5 } } }
+  );
+  res.cookie('accessToken', access.token, cookieOptions(access.maxAge));
   res.cookie('refreshToken', refreshToken, cookieOptions(refreshExpiresIn.milliseconds));
 };
 const normalizeMobile = (value) => {
@@ -195,22 +207,37 @@ router.post('/refresh', rateLimit({ name: 'refresh', windowMs: 15 * 60 * 1000, m
   try {
     const refreshToken = req.cookies.refreshToken;
     if (!refreshToken) return res.status(401).json({ message: 'Session expired' });
-    const user = await User.findOne({ 'refreshTokens.tokenHash': hash(refreshToken) }).select(
-      '+refreshTokens'
-    );
-    const session = user?.refreshTokens.find(
-      (entry) => entry.tokenHash === hash(refreshToken) && entry.expiresAt > new Date()
-    );
-    if (!user || !user.isActive || !session) {
+    const now = new Date();
+    const currentHash = hash(refreshToken);
+    const rotatedToken = crypto.randomBytes(48).toString('base64url');
+    const rotatedHash = hash(rotatedToken);
+    const metadata = requestMetadata(req);
+    const user = await User.findOneAndUpdate(
+      {
+        isActive: true,
+        refreshTokens: {
+          $elemMatch: { tokenHash: currentHash, expiresAt: { $gt: now } },
+        },
+      },
+      {
+        $set: {
+          'refreshTokens.$.tokenHash': rotatedHash,
+          'refreshTokens.$.lastUsedAt': now,
+          'refreshTokens.$.userAgent': metadata.userAgent,
+          'refreshTokens.$.ip': metadata.ip,
+        },
+      },
+      { new: true, runValidators: true }
+    ).select('+refreshTokens.tokenHash');
+    const session = user?.refreshTokens.find((entry) => entry.tokenHash === rotatedHash);
+    if (!user || !session) {
+      clearAuthCookies(res);
       return res.status(401).json({ message: 'Session expired' });
     }
-    user.refreshTokens = user.refreshTokens.filter(
-      (entry) => entry.tokenHash !== hash(refreshToken)
-    );
-    await issueSession(user, res, {
-      createdAt: session.createdAt,
-      ...requestMetadata(req),
-    });
+    const access = createAccessToken(user);
+    const refreshMaxAge = Math.max(session.expiresAt.getTime() - now.getTime(), 0);
+    res.cookie('accessToken', access.token, cookieOptions(access.maxAge));
+    res.cookie('refreshToken', rotatedToken, cookieOptions(refreshMaxAge));
     res.json({ data: { user: userData(user) } });
   } catch (error) {
     next(error);
@@ -358,7 +385,7 @@ router.post('/reset-password', rateLimit({ name: 'reset-password', windowMs: 15 
 router.get('/me', protect, (req, res) => res.json({ data: userData(req.user) }));
 router.get('/sessions', protect, async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id).select('+refreshTokens');
+    const user = await User.findById(req.user._id).select('+refreshTokens.tokenHash');
     const currentHash = req.cookies.refreshToken ? hash(req.cookies.refreshToken) : null;
     const sessions = user.refreshTokens
       .filter((session) => session.expiresAt > new Date())
@@ -378,7 +405,7 @@ router.get('/sessions', protect, async (req, res, next) => {
 });
 router.delete('/sessions/:id', protect, async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id).select('+refreshTokens');
+    const user = await User.findById(req.user._id).select('+refreshTokens.tokenHash');
     const session = user.refreshTokens.id(req.params.id);
     if (!session) return res.status(404).json({ message: 'Session not found.' });
     const current = req.cookies.refreshToken && session.tokenHash === hash(req.cookies.refreshToken);

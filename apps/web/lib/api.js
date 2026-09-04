@@ -1,5 +1,5 @@
 export const API_URL =
-  process.env.NEXT_API_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
   (process.env.NODE_ENV === 'production'
     ? 'https://master-mcq-app-api.vercel.app/api'
     : 'http://localhost:5000/api');
@@ -26,7 +26,7 @@ export async function api(path, options = {}) {
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,
-      },  
+      },
       credentials: 'include',
       cache: 'no-store',
     });
