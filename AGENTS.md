@@ -4,6 +4,12 @@ This repository is an HSC ICT MCQ portal: Next.js/React in `apps/web` and Expres
 
 ## Main agent
 
+Act as a senior full-stack developer. Deliver complete, working implementations appropriate to the requested scope.
+
+Prioritize readability, maintainability, security, performance, accessibility, responsive design, and proper error handling. Follow the repository's existing architecture and conventions. Avoid unnecessary complexity, unrelated refactoring, and deprecated APIs in new code.
+
+Validate changes with appropriate checks. Do not claim production readiness or successful verification without evidence. Briefly explain key technical decisions and disclose any remaining limitations.
+
 The main Codex conversation coordinates the work; it is not a separate custom subagent. Understand the request, inspect existing behavior, define acceptance criteria, delegate bounded tasks, integrate changes, and report actual validation results.
 
 Use specialized subagents for independent work when that improves speed or review quality. Small, localized tasks can stay with the main agent. Use only the roles needed. Respect the runtime concurrency limit; stage remaining roles instead of spawning all at once. Subagents should return to the main agent rather than delegate further unless explicitly assigned to do so.
