@@ -7,7 +7,13 @@ const Question = require('../models/Question');
 const { fillMissingEnglish } = require('./translation.service');
 const { removeEmptySubtopic } = require('./questionHierarchy.service');
 const { hasRichLanguage, richLanguageToText } = require('../utils/richContent');
-const { QUESTION_TYPES, WRITTEN_QUESTION_TYPES, STIMULUS_QUESTION_TYPES, normalizeQuestionType } = require('../constants/questionTypes');
+const { optionContentError } = require('../utils/optionContent');
+const {
+  QUESTION_TYPES,
+  WRITTEN_QUESTION_TYPES,
+  STIMULUS_QUESTION_TYPES,
+  normalizeQuestionType,
+} = require('../constants/questionTypes');
 
 const ACCEPTED_STATUS = ['draft', 'published', 'archived'];
 const ACCEPTED_SOURCES = ['board', 'teacher', 'model_test', 'practice', 'admission'];
@@ -39,7 +45,8 @@ const parseTags = (value) =>
 
 const readQuestionRows = (buffer) => {
   const workbook = XLSX.read(buffer, { type: 'array', raw: false });
-  const sheetName = workbook.SheetNames.find((name) => /questions/i.test(name)) || workbook.SheetNames[0];
+  const sheetName =
+    workbook.SheetNames.find((name) => /questions/i.test(name)) || workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
   if (!worksheet) throw new Error('The uploaded file does not contain a worksheet to import.');
   const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false, blankrows: false });
@@ -52,7 +59,9 @@ const getHeaderValue = (row, aliases) => {
     const exact = entries.find(([key]) => normalizeForCompare(key) === normalizeForCompare(alias));
     if (exact) return exact[1];
   }
-  const direct = entries.find(([key]) => normalizeForCompare(key) === normalizeForCompare(aliases[0]));
+  const direct = entries.find(
+    ([key]) => normalizeForCompare(key) === normalizeForCompare(aliases[0])
+  );
   return direct ? direct[1] : '';
 };
 
@@ -84,7 +93,8 @@ const parseRichBlocks = (value, field) => {
 };
 
 const parseRichColumns = (rawRow) => {
-  const read = (header) => parseRichBlocks(getHeaderValue(rawRow, [header, header.replace(/ /g, '_')]), header);
+  const read = (header) =>
+    parseRichBlocks(getHeaderValue(rawRow, [header, header.replace(/ /g, '_')]), header);
   return {
     questionContent: { bn: read('Question Rich BN'), en: read('Question Rich EN') },
     answerContent: { bn: read('Answer Rich BN'), en: read('Answer Rich EN') },
@@ -108,7 +118,10 @@ const validatePayloadRichContent = (payload) => {
       payload.explanationContent?.[language],
       `Explanation Rich ${language.toUpperCase()}`
     );
-    parseRichBlocks(payload.stimulus?.content?.[language], `Stimulus Rich ${language.toUpperCase()}`);
+    parseRichBlocks(
+      payload.stimulus?.content?.[language],
+      `Stimulus Rich ${language.toUpperCase()}`
+    );
     for (const key of OPTION_KEYS) {
       const option = payload.optionContent?.find((item) => item.key === key);
       parseRichBlocks(option?.content?.[language], `Option ${key} Rich ${language.toUpperCase()}`);
@@ -119,10 +132,12 @@ const validatePayloadRichContent = (payload) => {
 const findMatchingName = (records, value) => {
   const target = normalizeForCompare(value);
   if (!target) return null;
-  return records.find((item) => {
-    const names = [item.name?.bn, item.name?.en, item.title].filter(Boolean);
-    return names.some((name) => normalizeForCompare(name) === target);
-  }) || null;
+  return (
+    records.find((item) => {
+      const names = [item.name?.bn, item.name?.en, item.title].filter(Boolean);
+      return names.some((name) => normalizeForCompare(name) === target);
+    }) || null
+  );
 };
 
 const buildSyllabusIndex = async () => {
@@ -148,25 +163,37 @@ const buildSyllabusIndex = async () => {
 };
 
 const buildQuestionPayload = (row, chapter, topic, subtopic, rich) => {
-  const questionType = normalizeQuestionType(getHeaderValue(row, ['Question Type', 'questionType', 'question_type']));
+  const questionType = normalizeQuestionType(
+    getHeaderValue(row, ['Question Type', 'questionType', 'question_type'])
+  );
   const questionBn = normalizeText(row['Question BN'] || row['Question_BN'] || row['Question BN ']);
   const questionEn = normalizeText(row['Question EN'] || row['Question_EN'] || row['Question EN ']);
-  const explanationBn = normalizeText(row['Explanation BN'] || row['Explanation_BN'] || row['Explanation BN ']);
-  const explanationEn = normalizeText(row['Explanation EN'] || row['Explanation_EN'] || row['Explanation EN ']);
+  const explanationBn = normalizeText(
+    row['Explanation BN'] || row['Explanation_BN'] || row['Explanation BN ']
+  );
+  const explanationEn = normalizeText(
+    row['Explanation EN'] || row['Explanation_EN'] || row['Explanation EN ']
+  );
   const difficulty = normalizeText(row.Difficulty || row.difficulty || 'medium').toLowerCase();
   const sourceType = normalizeText(row['Source Type'] || row.sourceType || 'teacher').toLowerCase();
   const status = normalizeText(row.Status || row.status || 'draft').toLowerCase();
 
   const options = OPTION_KEYS.map((key) => {
-    const bn = normalizeText(row[`Option ${key} BN`] || row[`Option_${key}_BN`] || row[`Option ${key} BN `]);
-    const en = normalizeText(row[`Option ${key} EN`] || row[`Option_${key}_EN`] || row[`Option ${key} EN `]);
+    const bn = normalizeText(
+      row[`Option ${key} BN`] || row[`Option_${key}_BN`] || row[`Option ${key} BN `]
+    );
+    const en = normalizeText(
+      row[`Option ${key} EN`] || row[`Option_${key}_EN`] || row[`Option ${key} EN `]
+    );
     return {
       key,
       text: { bn, en },
     };
   });
 
-  const correctAnswer = normalizeText(row.CorrectAnswer || row['Correct Answer'] || row.correctAnswer || 'A').toUpperCase();
+  const correctAnswer = normalizeText(
+    row.CorrectAnswer || row['Correct Answer'] || row.correctAnswer || 'A'
+  ).toUpperCase();
 
   const payload = {
     chapterId: chapter._id,
@@ -174,7 +201,9 @@ const buildQuestionPayload = (row, chapter, topic, subtopic, rich) => {
     ...(subtopic ? { subtopicId: subtopic._id } : {}),
     question: { bn: questionBn, en: questionEn },
     questionContent: rich.questionContent,
-    ...(rich.stimulus.groupId || hasRichLanguage(rich.stimulus.content, 'bn') || hasRichLanguage(rich.stimulus.content, 'en')
+    ...(rich.stimulus.groupId ||
+    hasRichLanguage(rich.stimulus.content, 'bn') ||
+    hasRichLanguage(rich.stimulus.content, 'en')
       ? { stimulus: rich.stimulus }
       : {}),
     options,
@@ -231,7 +260,9 @@ const findDuplicateQuestion = async (payload) => {
     return existingNormalized && existingNormalized === normalized;
   });
 
-  return duplicate ? `A duplicate question already exists in the same topic${payload.subtopicId ? ' subtopic' : ''}.` : null;
+  return duplicate
+    ? `A duplicate question already exists in the same topic${payload.subtopicId ? ' subtopic' : ''}.`
+    : null;
 };
 
 const rowError = (excelRowNumber, field, message) => ({ excelRowNumber, field, message });
@@ -247,20 +278,60 @@ const normalizeImportRow = (rawRow, excelRowNumber) => {
     chapter: normalizeText(getHeaderValue(rawRow, ['Chapter', 'chapter'])),
     topic: normalizeText(getHeaderValue(rawRow, ['Topic', 'topic'])),
     subtopic: normalizeText(getHeaderValue(rawRow, ['Subtopic', 'subtopic'])),
-    questionType: normalizeQuestionType(getHeaderValue(rawRow, ['Question Type', 'questionType', 'question_type'])),
-    questionBn: normalizeText(getHeaderValue(rawRow, ['Question BN', 'Question BN ', 'question bn', 'Question_BN'])) ,
-    questionEn: normalizeText(getHeaderValue(rawRow, ['Question EN', 'Question EN ', 'question en', 'Question_EN'])),
-    explanationBn: normalizeText(getHeaderValue(rawRow, ['Explanation BN', 'Explanation BN ', 'explanation bn', 'Explanation_BN'])),
-    explanationEn: normalizeText(getHeaderValue(rawRow, ['Explanation EN', 'Explanation EN ', 'explanation en', 'Explanation_EN'])),
+    questionType: normalizeQuestionType(
+      getHeaderValue(rawRow, ['Question Type', 'questionType', 'question_type'])
+    ),
+    questionBn: normalizeText(
+      getHeaderValue(rawRow, ['Question BN', 'Question BN ', 'question bn', 'Question_BN'])
+    ),
+    questionEn: normalizeText(
+      getHeaderValue(rawRow, ['Question EN', 'Question EN ', 'question en', 'Question_EN'])
+    ),
+    explanationBn: normalizeText(
+      getHeaderValue(rawRow, [
+        'Explanation BN',
+        'Explanation BN ',
+        'explanation bn',
+        'Explanation_BN',
+      ])
+    ),
+    explanationEn: normalizeText(
+      getHeaderValue(rawRow, [
+        'Explanation EN',
+        'Explanation EN ',
+        'explanation en',
+        'Explanation_EN',
+      ])
+    ),
     answerBn: normalizeText(getHeaderValue(rawRow, ['Answer BN', 'Answer_BN'])),
     answerEn: normalizeText(getHeaderValue(rawRow, ['Answer EN', 'Answer_EN'])),
-    correctAnswer: normalizeText(getHeaderValue(rawRow, ['Correct Answer', 'correctAnswer', 'CorrectAnswer'])).toUpperCase(),
+    correctAnswer: normalizeText(
+      getHeaderValue(rawRow, ['Correct Answer', 'correctAnswer', 'CorrectAnswer'])
+    ).toUpperCase(),
     difficulty: normalizeText(getHeaderValue(rawRow, ['Difficulty', 'difficulty'])).toLowerCase(),
-    sourceType: normalizeText(getHeaderValue(rawRow, ['Source Type', 'sourceType', 'SourceType'])).toLowerCase(),
+    sourceType: normalizeText(
+      getHeaderValue(rawRow, ['Source Type', 'sourceType', 'SourceType'])
+    ).toLowerCase(),
     status: normalizeText(getHeaderValue(rawRow, ['Status', 'status'])).toLowerCase(),
     tags: normalizeText(getHeaderValue(rawRow, ['Tags', 'tags'])),
-    optionBn: (key) => normalizeText(getHeaderValue(rawRow, [`Option ${key} BN`, `Option ${key} BN `, `Option_${key}_BN`, `option ${key} bn`])),
-    optionEn: (key) => normalizeText(getHeaderValue(rawRow, [`Option ${key} EN`, `Option ${key} EN `, `Option_${key}_EN`, `option ${key} en`])),
+    optionBn: (key) =>
+      normalizeText(
+        getHeaderValue(rawRow, [
+          `Option ${key} BN`,
+          `Option ${key} BN `,
+          `Option_${key}_BN`,
+          `option ${key} bn`,
+        ])
+      ),
+    optionEn: (key) =>
+      normalizeText(
+        getHeaderValue(rawRow, [
+          `Option ${key} EN`,
+          `Option ${key} EN `,
+          `Option_${key}_EN`,
+          `option ${key} en`,
+        ])
+      ),
   };
 };
 
@@ -275,7 +346,9 @@ const validateQuestionRow = async (rawRow, excelRowNumber, syllabusIndex) => {
   }
 
   if (Number.isNaN(normalizedRow.questionType))
-    errors.push(rowError(excelRowNumber, 'Question Type', 'Question Type must be a number from 0 to 4.'));
+    errors.push(
+      rowError(excelRowNumber, 'Question Type', 'Question Type must be a number from 0 to 4.')
+    );
 
   const chapterName = normalizedRow.chapter;
   if (!chapterName) {
@@ -296,19 +369,35 @@ const validateQuestionRow = async (rawRow, excelRowNumber, syllabusIndex) => {
   }
 
   const topic = (syllabusIndex.topicsByChapter[String(chapter._id)] || []).find((entry) =>
-    [entry.name?.bn, entry.name?.en].some((name) => normalizeForCompare(name) === normalizeForCompare(topicName))
+    [entry.name?.bn, entry.name?.en].some(
+      (name) => normalizeForCompare(name) === normalizeForCompare(topicName)
+    )
   );
   if (!topic) {
-    errors.push(rowError(excelRowNumber, 'Topic', `Topic "${topicName}" was not found under Chapter "${chapterName}".`));
+    errors.push(
+      rowError(
+        excelRowNumber,
+        'Topic',
+        `Topic "${topicName}" was not found under Chapter "${chapterName}".`
+      )
+    );
     return { valid: false, errors, row: normalizedRow };
   }
 
   if (normalizedRow.subtopic) {
     const subtopic = (syllabusIndex.subtopicsByTopic[String(topic._id)] || []).find((entry) =>
-      [entry.name?.bn, entry.name?.en].some((name) => normalizeForCompare(name) === normalizeForCompare(normalizedRow.subtopic))
+      [entry.name?.bn, entry.name?.en].some(
+        (name) => normalizeForCompare(name) === normalizeForCompare(normalizedRow.subtopic)
+      )
     );
     if (!subtopic) {
-      errors.push(rowError(excelRowNumber, 'Subtopic', `Subtopic "${normalizedRow.subtopic}" was not found under Topic "${topicName}".`));
+      errors.push(
+        rowError(
+          excelRowNumber,
+          'Subtopic',
+          `Subtopic "${normalizedRow.subtopic}" was not found under Topic "${topicName}".`
+        )
+      );
       return { valid: false, errors, row: normalizedRow };
     }
   }
@@ -347,41 +436,77 @@ const validateQuestionRow = async (rawRow, excelRowNumber, syllabusIndex) => {
 
   const answer = normalizedRow.correctAnswer;
   if (isMcq && (!answer || !['A', 'B', 'C', 'D'].includes(answer))) {
-    errors.push(rowError(excelRowNumber, 'Correct Answer', 'Correct Answer must be A, B, C, or D.'));
+    errors.push(
+      rowError(excelRowNumber, 'Correct Answer', 'Correct Answer must be A, B, C, or D.')
+    );
   }
 
   const normalizedDifficulty = normalizedRow.difficulty || 'medium';
   if (!ACCEPTED_DIFFICULTY.includes(normalizedDifficulty)) {
-    errors.push(rowError(excelRowNumber, 'Difficulty', 'Difficulty must be easy, medium, or hard.'));
+    errors.push(
+      rowError(excelRowNumber, 'Difficulty', 'Difficulty must be easy, medium, or hard.')
+    );
   }
 
   const normalizedSource = normalizedRow.sourceType || 'teacher';
   if (!ACCEPTED_SOURCES.includes(normalizedSource)) {
-    errors.push(rowError(excelRowNumber, 'Source Type', 'Source Type must be board, teacher, model_test, practice, or admission.'));
+    errors.push(
+      rowError(
+        excelRowNumber,
+        'Source Type',
+        'Source Type must be board, teacher, model_test, practice, or admission.'
+      )
+    );
   }
 
   const normalizedStatus = normalizedRow.status || 'draft';
   if (!ACCEPTED_STATUS.includes(normalizedStatus)) {
-    errors.push(rowError(excelRowNumber, 'Status', 'Status must be draft, published, or archived.'));
+    errors.push(
+      rowError(excelRowNumber, 'Status', 'Status must be draft, published, or archived.')
+    );
   }
 
   for (const key of isMcq ? OPTION_KEYS : []) {
-    const bnValue = normalizedRow.optionBn(key);
-    if (!bnValue) {
-      errors.push(rowError(excelRowNumber, `Option ${key} BN`, `Option ${key} Bangla text is required.`));
-    }
+    const error = optionContentError(
+      key,
+      { bn: normalizedRow.optionBn(key), en: normalizedRow.optionEn(key) },
+      rich?.optionContent.find((item) => item.key === key)?.content
+    );
+    if (error)
+      errors.push(rowError(excelRowNumber, `Option ${key} BN / Option ${key} Rich BN`, error));
   }
   if (isWritten && rich) {
     const plainAnswer = Boolean(normalizedRow.answerBn);
     const richAnswer = hasRichLanguage(rich.answerContent, 'bn');
     if (plainAnswer && richAnswer)
-      errors.push(rowError(excelRowNumber, 'Answer BN', 'Use either plain Bangla answer text or rich content, not both.'));
+      errors.push(
+        rowError(
+          excelRowNumber,
+          'Answer BN',
+          'Use either plain Bangla answer text or rich content, not both.'
+        )
+      );
     if (!plainAnswer && !richAnswer)
-      errors.push(rowError(excelRowNumber, 'Answer BN / Answer Rich BN', 'Bangla answer text or rich content is required.'));
+      errors.push(
+        rowError(
+          excelRowNumber,
+          'Answer BN / Answer Rich BN',
+          'Bangla answer text or rich content is required.'
+        )
+      );
   }
-  if (STIMULUS_QUESTION_TYPES.includes(normalizedRow.questionType) && rich &&
-      !hasRichLanguage(rich.stimulus.content, 'bn'))
-    errors.push(rowError(excelRowNumber, 'Stimulus Rich BN', 'Question types 3 and 4 require Bangla stimulus content.'));
+  if (
+    STIMULUS_QUESTION_TYPES.includes(normalizedRow.questionType) &&
+    rich &&
+    !hasRichLanguage(rich.stimulus.content, 'bn')
+  )
+    errors.push(
+      rowError(
+        excelRowNumber,
+        'Stimulus Rich BN',
+        'Question types 3 and 4 require Bangla stimulus content.'
+      )
+    );
 
   if (errors.length) {
     return { valid: false, errors, row: normalizedRow };
@@ -389,7 +514,9 @@ const validateQuestionRow = async (rawRow, excelRowNumber, syllabusIndex) => {
 
   const subtopic = (syllabusIndex.subtopicsByTopic[String(topic._id)] || []).find((entry) =>
     normalizedRow.subtopic
-      ? [entry.name?.bn, entry.name?.en].some((name) => normalizeForCompare(name) === normalizeForCompare(normalizedRow.subtopic))
+      ? [entry.name?.bn, entry.name?.en].some(
+          (name) => normalizeForCompare(name) === normalizeForCompare(normalizedRow.subtopic)
+        )
       : false
   );
 
@@ -401,7 +528,13 @@ const validateQuestionRow = async (rawRow, excelRowNumber, syllabusIndex) => {
   }
 
   try {
-    if (!isMcq) return { valid: true, row: normalizedRow, payload: { ...removeEmptySubtopic(payload), isDeleted: false }, warnings: [] };
+    if (!isMcq)
+      return {
+        valid: true,
+        row: normalizedRow,
+        payload: { ...removeEmptySubtopic(payload), isDeleted: false },
+        warnings: [],
+      };
     const translationTargets = ['options', 'explanation'];
     if (payload.status === 'published' || !hasRichLanguage(payload.questionContent, 'bn')) {
       translationTargets.unshift('question');
@@ -421,7 +554,13 @@ const validateQuestionRow = async (rawRow, excelRowNumber, syllabusIndex) => {
   } catch (error) {
     return {
       valid: false,
-      errors: [rowError(excelRowNumber, 'Bilingual content', error.message || 'English translation failed.')],
+      errors: [
+        rowError(
+          excelRowNumber,
+          'Bilingual content',
+          error.message || 'English translation failed.'
+        ),
+      ],
       row: normalizedRow,
     };
   }
@@ -447,7 +586,13 @@ const validateImportRows = async (buffer) => {
     );
     const duplicateKey = `${topicKey}::${normalizedQuestion}`;
     if (duplicateMap.has(duplicateKey)) {
-      preview.invalidRows.push(rowError(excelRowNumber, 'Question BN', 'Duplicate question detected within the same import batch.'));
+      preview.invalidRows.push(
+        rowError(
+          excelRowNumber,
+          'Question BN',
+          'Duplicate question detected within the same import batch.'
+        )
+      );
       continue;
     }
     duplicateMap.set(duplicateKey, true);
@@ -459,7 +604,9 @@ const validateImportRows = async (buffer) => {
     });
   }
 
-  const invalidRowNumbers = new Set(preview.invalidRows.map((error) => Number(error.excelRowNumber)));
+  const invalidRowNumbers = new Set(
+    preview.invalidRows.map((error) => Number(error.excelRowNumber))
+  );
 
   return {
     ...preview,
@@ -552,18 +699,61 @@ const buildQuestionImportTemplate = async () => {
   const instructionRows = [
     ['Question bank rich-content import format'],
     ['Rule', 'Details'],
-    ['Question Type', '0 = MCQ, 1 = Knowledge, 2 = Comprehension, 3 = Application, 4 = Higher order. Blank defaults to 0.'],
-    ['Question choice', 'For each language, use either Question BN/EN or Question Rich BN/EN. Never fill both.'],
-    ['Rich cell format', 'A JSON array of blocks. Supported types: text, code, math, image, table.'],
+    [
+      'Question Type',
+      '0 = MCQ, 1 = Knowledge, 2 = Comprehension, 3 = Application, 4 = Higher order. Blank defaults to 0.',
+    ],
+    [
+      'Question choice',
+      'For each language, use either Question BN/EN or Question Rich BN/EN. Never fill both.',
+    ],
+    [
+      'Rich cell format',
+      'A JSON array of blocks. Supported types: text, code, math, image, table.',
+    ],
     ['Text block', JSON.stringify([{ type: 'text', text: 'Question text' }])],
     ['Code block', JSON.stringify([{ type: 'code', text: 'printf("Hello");', language: 'c' }])],
     ['Math block', exampleRich],
-    ['Image block', JSON.stringify([{ type: 'image', url: 'https://example.com/image.png', alt: 'Description', caption: 'Optional caption' }])],
-    ['Table block', JSON.stringify([{ type: 'table', rows: [['Heading 1', 'Heading 2'], ['Cell 1', 'Cell 2']] }])],
-    ['Options and explanation', 'Plain Bangla remains required. Rich columns are optional enhancements.'],
-    ['Written answers', 'Types 1-4 require either Answer BN or Answer Rich BN. English answer fields are optional.'],
-    ['Stimulus', 'Types 3 and 4 require Stimulus Rich BN. Group ID connects questions that use the same passage.'],
-    ['Published rows', 'Both Bangla and English question content are required. Rich Bangla is not auto-translated; supply English rich content or English plain text.'],
+    [
+      'Image block',
+      JSON.stringify([
+        {
+          type: 'image',
+          url: 'https://example.com/image.png',
+          alt: 'Description',
+          caption: 'Optional caption',
+        },
+      ]),
+    ],
+    [
+      'Table block',
+      JSON.stringify([
+        {
+          type: 'table',
+          rows: [
+            ['Heading 1', 'Heading 2'],
+            ['Cell 1', 'Cell 2'],
+          ],
+        },
+      ]),
+    ],
+    [
+      'Options A-D',
+      'For each option, choose plain BN/EN or rich BN/EN. Do not mix representations across languages. Bangla is required in the chosen representation; English is optional for drafts and required for published rows. Rich options are not auto-translated.',
+    ],
+    ['Explanation', 'Plain Bangla remains required. Rich columns are optional enhancements.'],
+    [
+      'Written answers',
+      'Types 1-4 require either Answer BN or Answer Rich BN. English answer fields are optional.',
+    ],
+    [
+      'Stimulus',
+      'Types 3 and 4 require Stimulus Rich BN. Group ID connects questions that use the same passage.',
+    ],
+    [
+      'Published rows',
+      'Both Bangla and English question content are required. Rich Bangla is not auto-translated; supply English rich content or English plain text.',
+    ],
     ['Draft rows', 'English question content may be omitted.'],
   ];
   const instructionsSheet = XLSX.utils.aoa_to_sheet(instructionRows);
@@ -572,7 +762,10 @@ const buildQuestionImportTemplate = async () => {
   const examplesSheet = XLSX.utils.aoa_to_sheet([
     ['Field', 'Example value'],
     ['Question Rich BN', exampleRich],
-    ['Question Rich EN', JSON.stringify([{ type: 'math', text: 'x^2 + y^2 = z^2', display: true }])],
+    [
+      'Question Rich EN',
+      JSON.stringify([{ type: 'math', text: 'x^2 + y^2 = z^2', display: true }]),
+    ],
     ['Stimulus Group ID', 'hsc-ict-example-1'],
     ['Stimulus Rich BN', JSON.stringify([{ type: 'text', text: 'উদ্দীপকের লেখা' }])],
   ]);
@@ -603,24 +796,39 @@ const persistValidatedRows = async (validRows, userId) => {
       const hasPlain = Boolean(normalized.question?.[language]?.trim());
       const hasRich = hasRichLanguage(normalized.questionContent, language);
       if (hasPlain && hasRich)
-        throw new Error(`Use either plain or rich ${language.toUpperCase()} question content, not both.`);
+        throw new Error(
+          `Use either plain or rich ${language.toUpperCase()} question content, not both.`
+        );
       if (language === 'bn' && !hasPlain && !hasRich)
         throw new Error('Bangla plain question text or rich question content is required.');
-      if (normalized.questionType === QUESTION_TYPES.MCQ && normalized.status === 'published' && !hasPlain && !hasRich)
+      if (
+        normalized.questionType === QUESTION_TYPES.MCQ &&
+        normalized.status === 'published' &&
+        !hasPlain &&
+        !hasRich
+      )
         throw new Error(`Published questions require ${language.toUpperCase()} question content.`);
     }
-    if (normalized.questionType === QUESTION_TYPES.MCQ && !normalized.explanation?.bn?.trim()) throw new Error('Bangla explanation is required for MCQ questions.');
+    if (normalized.questionType === QUESTION_TYPES.MCQ && !normalized.explanation?.bn?.trim())
+      throw new Error('Bangla explanation is required for MCQ questions.');
     for (const key of normalized.questionType === QUESTION_TYPES.MCQ ? OPTION_KEYS : []) {
       const option = normalized.options?.find((item) => item.key === key);
-      if (!option?.text?.bn?.trim()) {
-        throw new Error(`Option ${key} Bangla text is required.`);
-      }
+      const rich = normalized.optionContent?.find((item) => item.key === key);
+      const error = optionContentError(
+        key,
+        option?.text,
+        rich?.content,
+        normalized.status === 'published'
+      );
+      if (error) throw new Error(error);
     }
     if (WRITTEN_QUESTION_TYPES.includes(normalized.questionType)) {
       const plain = Boolean(normalized.answer?.bn?.trim());
       const rich = hasRichLanguage(normalized.answerContent, 'bn');
-      if (plain && rich) throw new Error('Use either plain or rich Bangla answer content, not both.');
-      if (!plain && !rich) throw new Error('Bangla answer text or rich answer content is required.');
+      if (plain && rich)
+        throw new Error('Use either plain or rich Bangla answer content, not both.');
+      if (!plain && !rich)
+        throw new Error('Bangla answer text or rich answer content is required.');
     }
 
     return normalized;
@@ -642,8 +850,7 @@ const persistValidatedRows = async (validRows, userId) => {
       importedCount: inserted.length,
       rows: inserted.map((item) => ({
         _id: item._id,
-        question:
-          item.question?.bn || richLanguageToText(item.questionContent, 'bn').slice(0, 200),
+        question: item.question?.bn || richLanguageToText(item.questionContent, 'bn').slice(0, 200),
       })),
     };
   } finally {

@@ -1,4 +1,5 @@
 const { hasRichLanguage } = require('../utils/richContent');
+const { optionContentError } = require('../utils/optionContent');
 
 function missing(value) {
   return !value || !value.trim();
@@ -14,7 +15,11 @@ async function translateText(banglaText) {
     url.searchParams.set('langpair', 'bn|en');
     const response = await fetch(url);
     const payload = await response.json();
-    if (!response.ok || payload.responseStatus !== 200 || !payload.responseData?.translatedText?.trim())
+    if (
+      !response.ok ||
+      payload.responseStatus !== 200 ||
+      !payload.responseData?.translatedText?.trim()
+    )
       throw new Error(payload.responseDetails || 'English translation failed.');
     return payload.responseData.translatedText.trim();
   }
@@ -75,11 +80,25 @@ async function fillMissingEnglish(
     if (!Array.isArray(questionPayload.options) || questionPayload.options.length !== 4)
       throw new Error('Exactly four Bangla options are required.');
     options = [];
-    for (const option of questionPayload.options)
+    for (const option of questionPayload.options) {
+      const content = questionPayload.optionContent?.find(
+        (item) => item.key === option.key
+      )?.content;
+      const isRich = hasRichLanguage(content, 'bn') || hasRichLanguage(content, 'en');
+      const error = optionContentError(
+        option.key,
+        option.text,
+        content,
+        isRich && questionPayload.status === 'published'
+      );
+      if (error) throw new Error(error);
       options.push({
         ...option,
-        text: await fillLocalizedValue(option.text, generated, `option ${option.key}`),
+        text: isRich
+          ? option.text
+          : await fillLocalizedValue(option.text, generated, `option ${option.key}`),
       });
+    }
   }
   return { ...questionPayload, question, explanation, options, generatedEnglishFields: generated };
 }

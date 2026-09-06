@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { hasRichLanguage } = require('../utils/richContent');
+const { optionContentError } = require('../utils/optionContent');
 const {
   QUESTION_TYPES,
   VALID_QUESTION_TYPES,
@@ -12,16 +13,8 @@ const FIXED_STIMULUS_TITLE = {
   en: 'Answer the next question based on the following stem/stimulus',
 };
 
-const localizedText = new mongoose.Schema(
-  {
-    bn: { type: String, required: true, trim: true },
-    en: { type: String, trim: true, default: '' },
-  },
-  { _id: false }
-);
-
-// Stimulus metadata is genuinely optional. It must not reuse localizedText,
-// because that schema intentionally requires Bangla for core question fields.
+// Content may live in plain text or rich blocks; document validation requires
+// the appropriate Bangla representation for each core field.
 const optionalLocalizedText = new mongoose.Schema(
   {
     bn: { type: String, trim: true, default: '' },
@@ -33,7 +26,7 @@ const optionalLocalizedText = new mongoose.Schema(
 const option = new mongoose.Schema(
   {
     key: { type: String, enum: ['A', 'B', 'C', 'D'], required: true },
-    text: { type: localizedText, required: true },
+    text: { type: optionalLocalizedText, default: () => ({}) },
   },
   { _id: false }
 );
@@ -101,7 +94,9 @@ const questionSchema = new mongoose.Schema(
     correctAnswer: {
       type: String,
       enum: ['A', 'B', 'C', 'D'],
-      required() { return this.questionType === QUESTION_TYPES.MCQ; },
+      required() {
+        return this.questionType === QUESTION_TYPES.MCQ;
+      },
     },
     explanation: { type: optionalLocalizedText, default: () => ({}) },
     explanationContent: { type: localizedBlocks, default: () => ({}) },
@@ -127,13 +122,20 @@ const questionSchema = new mongoose.Schema(
 
 questionSchema.index({ chapterId: 1, topicId: 1, subtopicId: 1, status: 1, isDeleted: 1 });
 questionSchema.index({ isDeleted: 1, updatedAt: -1 });
-questionSchema.index({ questionType: 1, chapterId: 1, topicId: 1, subtopicId: 1, status: 1, isDeleted: 1 });
+questionSchema.index({
+  questionType: 1,
+  chapterId: 1,
+  topicId: 1,
+  subtopicId: 1,
+  status: 1,
+  isDeleted: 1,
+});
 
 questionSchema.pre('validate', function enforceFixedStimulusInstruction(next) {
   const hasStimulus = Boolean(
     this.stimulus?.groupId?.trim() ||
-      this.stimulus?.content?.bn?.length ||
-      this.stimulus?.content?.en?.length
+    this.stimulus?.content?.bn?.length ||
+    this.stimulus?.content?.en?.length
   );
   if (hasStimulus) this.stimulus.title = FIXED_STIMULUS_TITLE;
   next();
@@ -159,7 +161,21 @@ questionSchema.pre('validate', function validateQuestionBodyChoice(next) {
 
 questionSchema.pre('validate', function validateTypeSpecificContent(next) {
   if (this.questionType === QUESTION_TYPES.MCQ) {
-    if (!this.explanation?.bn?.trim()) return next(new Error('Bangla explanation is required for MCQ questions.'));
+    if (this.options.length !== 4)
+      return next(new Error('MCQ questions require exactly four options.'));
+    for (const key of ['A', 'B', 'C', 'D']) {
+      const plain = this.options.find((item) => item.key === key);
+      const rich = this.optionContent.find((item) => item.key === key);
+      const error = optionContentError(
+        key,
+        plain?.text,
+        rich?.content,
+        this.status === 'published'
+      );
+      if (error) return next(new Error(error));
+    }
+    if (!this.explanation?.bn?.trim())
+      return next(new Error('Bangla explanation is required for MCQ questions.'));
     return next();
   }
   if (!WRITTEN_QUESTION_TYPES.includes(this.questionType)) return next();
@@ -174,7 +190,10 @@ questionSchema.pre('validate', function validateTypeSpecificContent(next) {
   if (
     STIMULUS_QUESTION_TYPES.includes(this.questionType) &&
     !hasRichLanguage(this.stimulus?.content, 'bn')
-  ) return next(new Error('Application and higher-order questions require Bangla stimulus content.'));
+  )
+    return next(
+      new Error('Application and higher-order questions require Bangla stimulus content.')
+    );
   next();
 });
 
@@ -188,9 +207,6 @@ questionSchema.pre('validate', function validatePublishedBilingualContent(next) 
   )
     missing.push('question');
   if (!this.explanation?.bn || !this.explanation?.en) missing.push('explanation');
-  this.options.forEach((optionItem) => {
-    if (!optionItem.text?.bn || !optionItem.text?.en) missing.push(`option ${optionItem.key}`);
-  });
   if (missing.length)
     return next(
       new Error(
