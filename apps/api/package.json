@@ -6,7 +6,7 @@
     "start": "node src/server.js",
     "seed": "node src/seed.js",
     "migrate:question-types": "node src/scripts/migrateQuestionTypes.js",
-    "test": "node --test src/middleware/requestOrigin.test.js src/models/Question.test.js src/services/questionImport.service.test.js src/services/subtopic.service.test.js src/utils/passwordPolicy.test.js src/utils/richContent.test.js"
+    "test": "node --test src/middleware/requestOrigin.test.js src/models/Question.test.js src/routes/question.routes.test.js src/services/questionImport.service.test.js src/services/subtopic.service.test.js src/utils/passwordPolicy.test.js src/utils/richContent.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

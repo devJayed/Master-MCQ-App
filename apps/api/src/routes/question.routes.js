@@ -82,6 +82,23 @@ router.get('/', async (req, res, next) => {
       return res.json({ count: await Question.countDocuments(filter) });
     }
 
+    if (req.query.page !== undefined || req.query.pageSize !== undefined) {
+      const requestedPage = Number.parseInt(req.query.page, 10);
+      const requestedPageSize = Number.parseInt(req.query.pageSize, 10);
+      const pageSize = Number.isFinite(requestedPageSize)
+        ? Math.min(Math.max(requestedPageSize, 1), 50)
+        : 20;
+      const total = await Question.countDocuments(filter);
+      const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+      const page = Math.min(Math.max(requestedPage || 1, 1), totalPages);
+      const data = await Question.find(filter)
+        .populate('chapterId topicId subtopicId', 'name')
+        .sort({ _id: 1 })
+        .skip((page - 1) * pageSize)
+        .limit(pageSize);
+      return res.json({ data, pagination: { page, pageSize, total, totalPages } });
+    }
+
     const data = await Question.find(filter)
       .populate('chapterId topicId subtopicId', 'name')
       .limit(Math.min(Number(req.query.limit) || 50, 1000));
@@ -103,7 +120,8 @@ router.get('/manage', protect, allow('teacher', 'moderator'), async (req, res, n
     if (req.query.sourceType) filter.sourceType = req.query.sourceType;
     if (req.query.questionType !== undefined) {
       const questionType = normalizeQuestionType(req.query.questionType);
-      if (Number.isNaN(questionType)) return res.status(400).json({ message: 'Question type must be between 0 and 4.' });
+      if (Number.isNaN(questionType))
+        return res.status(400).json({ message: 'Question type must be between 0 and 4.' });
       filter.questionType = questionType;
     }
     if (req.query.search) {
@@ -150,8 +168,13 @@ router.get('/manage', protect, allow('teacher', 'moderator'), async (req, res, n
 router.get('/study', protect, async (req, res, next) => {
   try {
     const requestedTypes = String(req.query.questionType || '')
-      .split(',').filter(Boolean).map(normalizeQuestionType);
-    if (requestedTypes.some(Number.isNaN) || requestedTypes.some((type) => !WRITTEN_QUESTION_TYPES.includes(type)))
+      .split(',')
+      .filter(Boolean)
+      .map(normalizeQuestionType);
+    if (
+      requestedTypes.some(Number.isNaN) ||
+      requestedTypes.some((type) => !WRITTEN_QUESTION_TYPES.includes(type))
+    )
       return res.status(400).json({ message: 'Study question types must be between 1 and 4.' });
     const filter = {
       status: 'published',
@@ -179,12 +202,21 @@ router.get('/study', protect, async (req, res, next) => {
     const pageSize = Math.min(Math.max(Number.parseInt(req.query.pageSize, 10) || 20, 1), 50);
     const total = await Question.countDocuments(filter);
     const data = await Question.find(filter)
-      .select('questionType chapterId topicId subtopicId stimulus question questionContent answer answerContent tags difficulty sourceType board year status')
+      .select(
+        'questionType chapterId topicId subtopicId stimulus question questionContent answer answerContent tags difficulty sourceType board year status'
+      )
       .populate('chapterId topicId subtopicId', 'name')
       .sort({ questionType: 1, createdAt: 1 })
-      .skip((page - 1) * pageSize).limit(pageSize).lean();
-    res.json({ data, pagination: { page, pageSize, total, totalPages: Math.max(Math.ceil(total / pageSize), 1) } });
-  } catch (error) { next(error); }
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean();
+    res.json({
+      data,
+      pagination: { page, pageSize, total, totalPages: Math.max(Math.ceil(total / pageSize), 1) },
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 const prepareQuestionPayload = (body) => {
@@ -219,7 +251,10 @@ router.post('/', protect, allow('teacher', 'moderator'), async (req, res, next) 
   try {
     const body = prepareQuestionPayload(req.body);
     await assertQuestionHierarchy(body);
-    const payload = body.status === 'published' && body.questionType === QUESTION_TYPES.MCQ ? await fillMissingEnglish(body) : body;
+    const payload =
+      body.status === 'published' && body.questionType === QUESTION_TYPES.MCQ
+        ? await fillMissingEnglish(body)
+        : body;
 
     const question = await Question.create({
       ...payload,
@@ -242,7 +277,9 @@ router.patch('/:id', protect, allow('teacher', 'moderator'), async (req, res, ne
     const candidate = { ...existing.toObject(), ...body };
     await assertQuestionHierarchy(candidate);
     const payload =
-      candidate.status === 'published' && candidate.questionType === QUESTION_TYPES.MCQ ? await fillMissingEnglish(candidate) : candidate;
+      candidate.status === 'published' && candidate.questionType === QUESTION_TYPES.MCQ
+        ? await fillMissingEnglish(candidate)
+        : candidate;
     const data = await Question.findByIdAndUpdate(
       req.params.id,
       { ...payload, updatedBy: req.user._id },
@@ -258,7 +295,10 @@ router.get('/import/template', protect, allow('teacher', 'moderator'), async (re
   try {
     const workbook = await buildQuestionImportTemplate();
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-    res.setHeader('Content-Disposition', 'attachment; filename="question-bank-import-template.xlsx"');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="question-bank-import-template.xlsx"'
+    );
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

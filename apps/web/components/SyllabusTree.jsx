@@ -9,26 +9,29 @@ import {
   Play,
   RefreshCw,
 } from 'lucide-react';
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { useLanguage } from './LanguageProvider';
+import SyllabusQuestionsDialog from './SyllabusQuestionsDialog';
 
 const content = {
   en: {
     eyebrow: 'HSC ICT · QUESTION MAP',
     title: 'Syllabus',
-    subtitle:
-      'See every available question and start an exam directly from any chapter, topic, or subtopic.',
+    subtitle: 'Browse questions or choose Start exam for any chapter, topic, or subtopic.',
     questions: 'questions',
     question: 'question',
     start: 'Start exam',
+    confirm: 'Do you want to start an exam?',
+    cancel: 'Cancel',
+    view: 'View questions',
     none: 'No questions yet',
     empty: 'No active syllabus content is available yet.',
     error: 'The syllabus could not be loaded. Please try again.',
     retry: 'Try again',
     loading: 'Loading syllabus and question availability...',
-    hint: 'Click a name to start an exam with all available questions in that section.',
+    hint: 'Click the question count to browse questions, or Start exam to confirm and begin.',
     topics: 'topics',
     topic: 'topic',
     expandChapter: 'Expand chapter',
@@ -42,16 +45,19 @@ const content = {
     eyebrow: 'এইচএসসি আইসিটি · প্রশ্ন মানচিত্র',
     title: 'সিলেবাস',
     subtitle:
-      'প্রতিটি অধ্যায়, টপিক ও সাবটপিকের প্রশ্নসংখ্যা দেখুন এবং নামের ওপর ক্লিক করে সরাসরি পরীক্ষা শুরু করুন।',
+      'প্রতিটি অধ্যায়, টপিক ও সাবটপিকের প্রশ্ন দেখুন অথবা স্টার্ট এক্সাম বাটন থেকে পরীক্ষা শুরু করুন।',
     questions: 'টি প্রশ্ন',
     question: 'টি প্রশ্ন',
-    start: 'পরীক্ষা শুরু করুন',
+    start: 'স্টার্ট এক্সাম',
+    confirm: 'আপনি কি এক্সাম শুরু করতে চান?',
+    cancel: 'বাতিল',
+    view: 'প্রশ্ন দেখুন',
     none: 'এখনও প্রশ্ন নেই',
     empty: 'এখনও কোনো সক্রিয় সিলেবাস পাওয়া যায়নি।',
     error: 'সিলেবাস লোড করা যায়নি। আবার চেষ্টা করুন।',
     retry: 'আবার চেষ্টা করুন',
     loading: 'সিলেবাস ও প্রশ্নের তথ্য লোড হচ্ছে...',
-    hint: 'নামের ওপর ক্লিক করলে ওই অংশের সব পাওয়া যায় এমন প্রশ্ন নিয়ে পরীক্ষা শুরু হবে।',
+    hint: 'প্রশ্ন দেখতে প্রশ্নসংখ্যার বাটনে অথবা পরীক্ষা শুরুর অনুমতি দিতে স্টার্ট এক্সাম বাটনে ক্লিক করুন।',
     topics: 'টি টপিক',
     topic: 'টি টপিক',
     expandChapter: 'অধ্যায় খুলুন',
@@ -72,43 +78,59 @@ const examHref = (type, item) => {
   return `/student/test?mode=${mode}&${filter}=${item._id}&count=${item.questionCount}&secondsPerQuestion=60`;
 };
 
-function CountBadge({ count, copy, language }) {
+function SectionActions({ type, item, copy, language, label, onView, onStart }) {
+  const count = item.questionCount;
   return (
-    <span
-      className={`badge badge-sm whitespace-nowrap ${count ? 'badge-primary badge-outline' : 'badge-ghost text-base-content/40'}`}
-    >
-      {count
-        ? `${number(count, language)} ${count === 1 ? copy.question : copy.questions}`
-        : copy.none}
+    <div className="ml-auto flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:shrink-0">
+      <button
+        type="button"
+        disabled={!count}
+        onClick={() => onView({ type, item })}
+        aria-label={`${number(count, language)} ${count === 1 ? copy.question : copy.questions} · ${copy.view}: ${label}`}
+        className="btn btn-outline btn-primary btn-xs min-h-8 whitespace-nowrap"
+      >
+        {count
+          ? `${number(count, language)} ${count === 1 ? copy.question : copy.questions}`
+          : copy.none}
+      </button>
+      <button
+        type="button"
+        disabled={!count}
+        onClick={() => onStart({ type, item })}
+        aria-label={`${copy.start}: ${label}`}
+        className="btn btn-primary btn-xs min-h-8 whitespace-nowrap"
+      >
+        <Play size={13} aria-hidden="true" /> {copy.start}
+      </button>
+    </div>
+  );
+}
+
+function SectionName({ item, children, className = '' }) {
+  return (
+    <span className={`${className} ${!item.questionCount ? 'text-base-content/55' : ''}`}>
+      {children}
     </span>
   );
 }
 
-function ExamName({ type, item, children, copy, language, className = '' }) {
-  if (!item.questionCount)
-    return <span className={`${className} text-base-content/55`}>{children}</span>;
-  return (
-    <Link
-      href={examHref(type, item)}
-      className={`${className} group/name rounded-sm outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-primary`}
-      title={`${copy.start} · ${number(item.questionCount, language)} ${item.questionCount === 1 ? copy.question : copy.questions}`}
-    >
-      {children}
-      <Play
-        size={13}
-        className="ml-1.5 inline fill-current opacity-0 transition group-hover/name:opacity-100 group-focus-visible/name:opacity-100"
-      />
-    </Link>
-  );
-}
-
 export default function SyllabusTree() {
+  const router = useRouter();
+  const confirmRef = useRef(null);
+  const [examSection, setExamSection] = useState(null);
+  const [questionSection, setQuestionSection] = useState(null);
   const { language } = useLanguage();
   const copy = content[language] || content.en;
   const [tree, setTree] = useState([]);
   const [expanded, setExpanded] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const dialog = confirmRef.current;
+    if (examSection && !dialog.open) dialog.showModal();
+    if (!examSection && dialog.open) dialog.close();
+  }, [examSection]);
 
   const load = () => {
     setLoading(true);
@@ -186,7 +208,7 @@ export default function SyllabusTree() {
         <section className="mt-7 overflow-hidden rounded-box border border-base-300 bg-base-100 shadow-sm">
           {tree.map((chapter, chapterIndex) => (
             <article key={chapter._id} className="border-b border-base-300 last:border-0">
-              <div className="flex items-center gap-2 p-3 transition hover:bg-base-200/60 sm:p-4">
+              <div className="flex flex-wrap items-center gap-2 p-3 transition hover:bg-base-200/60 sm:p-4">
                 <button
                   onClick={() => toggle(chapter._id)}
                   className="btn btn-circle btn-ghost btn-sm shrink-0"
@@ -199,28 +221,30 @@ export default function SyllabusTree() {
                   {number(chapter.order || chapterIndex + 1, language, { minimumIntegerDigits: 2 })}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <ExamName
-                    type="chapter"
-                    item={chapter}
-                    copy={copy}
-                    language={language}
-                    className="font-display text-lg font-bold"
-                  >
+                  <SectionName item={chapter} className="font-display text-lg font-bold">
                     {label(chapter)}
-                  </ExamName>
+                  </SectionName>
                   <p className="mt-0.5 text-[11px] text-base-content/45">
                     {number(chapter.topics.length, language)}{' '}
                     {chapter.topics.length === 1 ? copy.topic : copy.topics}
                   </p>
                 </div>
-                <CountBadge count={chapter.questionCount} copy={copy} language={language} />
+                <SectionActions
+                  type="chapter"
+                  item={chapter}
+                  label={label(chapter)}
+                  copy={copy}
+                  language={language}
+                  onView={setQuestionSection}
+                  onStart={setExamSection}
+                />
               </div>
 
               {expanded[chapter._id] && (
                 <div className="border-t border-base-300 bg-base-200/30 px-3 py-2 sm:pl-16">
                   {chapter.topics.map((topic, topicIndex) => (
                     <div key={topic._id} className="border-b border-base-300/70 last:border-0">
-                      <div className="flex items-center gap-2 py-3 pr-1">
+                      <div className="flex flex-wrap items-center gap-2 py-3 pr-1">
                         <button
                           onClick={() => toggle(topic._id)}
                           className="btn btn-circle btn-ghost btn-xs shrink-0"
@@ -234,18 +258,20 @@ export default function SyllabusTree() {
                           )}
                         </button>
                         <div className="min-w-0 flex-1">
-                          <ExamName
-                            type="topic"
-                            item={topic}
-                            copy={copy}
-                            language={language}
-                            className="font-semibold"
-                          >
+                          <SectionName item={topic} className="font-semibold">
                             {number(chapterIndex + 1, language)}.{number(topicIndex + 1, language)}{' '}
                             {label(topic)}
-                          </ExamName>
+                          </SectionName>
                         </div>
-                        <CountBadge count={topic.questionCount} copy={copy} language={language} />
+                        <SectionActions
+                          type="topic"
+                          item={topic}
+                          label={label(topic)}
+                          copy={copy}
+                          language={language}
+                          onView={setQuestionSection}
+                          onStart={setExamSection}
+                        />
                       </div>
 
                       {expanded[topic._id] && (
@@ -254,24 +280,25 @@ export default function SyllabusTree() {
                             topic.subtopics.map((subtopic, subtopicIndex) => (
                               <div
                                 key={subtopic._id}
-                                className="flex items-center gap-3 border-b border-base-300 px-4 py-3 last:border-0 hover:bg-base-200/50"
+                                className="flex flex-wrap items-center gap-3 border-b border-base-300 px-4 py-3 last:border-0 hover:bg-base-200/50"
                               >
                                 <span className="text-xs font-bold text-primary">
                                   {number(chapterIndex + 1, language)}.
                                   {number(topicIndex + 1, language)}.
                                   {number(subtopicIndex + 1, language)}
                                 </span>
-                                <ExamName
-                                  type="subtopic"
+                                <SectionName
                                   item={subtopic}
-                                  copy={copy}
-                                  language={language}
                                   className="min-w-0 flex-1 text-sm font-medium"
                                 >
                                   {label(subtopic)}
-                                </ExamName>
-                                <CountBadge
-                                  count={subtopic.questionCount}
+                                </SectionName>
+                                <SectionActions
+                                  type="subtopic"
+                                  item={subtopic}
+                                  label={label(subtopic)}
+                                  onView={setQuestionSection}
+                                  onStart={setExamSection}
                                   copy={copy}
                                   language={language}
                                 />
@@ -295,6 +322,55 @@ export default function SyllabusTree() {
           <p className="mt-3 text-sm text-base-content/55">{copy.empty}</p>
         </div>
       )}
+      <SyllabusQuestionsDialog
+        section={questionSection}
+        onClose={() => setQuestionSection(null)}
+        language={language}
+      />
+      <dialog
+        ref={confirmRef}
+        className="modal"
+        aria-labelledby="syllabus-exam-confirm-title"
+        aria-describedby="syllabus-exam-confirm-section"
+        onCancel={() => setExamSection(null)}
+        onClose={() => setExamSection(null)}
+      >
+        <div className="modal-box">
+          <h2 id="syllabus-exam-confirm-title" className="text-lg font-bold">
+            {copy.confirm}
+          </h2>
+          <p
+            id="syllabus-exam-confirm-section"
+            className="mt-3 break-words text-sm text-base-content/65"
+          >
+            {examSection ? label(examSection.item) : ''}
+          </p>
+          <div className="modal-action">
+            <button
+              type="button"
+              autoFocus
+              className="btn btn-ghost"
+              onClick={() => setExamSection(null)}
+            >
+              {copy.cancel}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!examSection}
+              onClick={() => {
+                if (!examSection) return;
+                const href = examHref(examSection.type, examSection.item);
+                setExamSection(null);
+                router.push(href);
+              }}
+            >
+              <Play size={16} aria-hidden="true" />
+              {copy.start}
+            </button>
+          </div>
+        </div>
+      </dialog>
     </main>
   );
 }

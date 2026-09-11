@@ -135,7 +135,7 @@ export default function WrittenQuestionsPage() {
         {copy(language, 'সিলেবাসভিত্তিক পাঠ', 'SYLLABUS STUDY BANK')}
       </p>
       <h1 className="mt-2 font-display text-4xl font-bold">
-        {copy(language, 'লিখিত প্রশ্ন ও উত্তর', 'Written questions and answers')}
+        {copy(language, 'লিখিত প্রশ্নব্যাংক ও উত্তর', 'Written questions and answers')}
       </h1>
       <p className="mt-2 text-sm text-base-content/60">
         {copy(

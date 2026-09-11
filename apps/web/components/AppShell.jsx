@@ -38,9 +38,10 @@ const roleConfig = {
     links: [
       ['/student/dashboard', 'Dashboard', LayoutDashboard],
       ['/student/practice', 'Practice', BookOpen],
-      ['/student/questions', 'Written Questions', BookOpen, 'লিখিত প্রশ্ন'],
-      ['/student/syllabus', 'Syllabus', BookOpen],
+      ['/student/syllabus', 'MCQ Syllabus', BookOpen],
       ['/student/create-test', 'Create Test', PlusCircle],
+      ['/student/questions', 'Written Questions', BookOpen, 'লিখিত প্রশ্নব্যাংক'],
+      ['/student/....', 'Written Syllabus', BookOpen],
       ['/student/history', 'Exam History', ClipboardList],
       ['/student/performance', 'Performance', ChartNoAxesCombined],
     ],

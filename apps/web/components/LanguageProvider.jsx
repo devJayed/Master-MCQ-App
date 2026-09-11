@@ -9,6 +9,8 @@ const translations = {
   Dashboard: 'ড্যাশবোর্ড',
   Practice: 'অনুশীলন',
   Syllabus: 'সিলেবাস',
+  'MCQ Syllabus': 'এমসিকিউ সিলেবাস',
+  'Written Syllabus': 'লিখিত সিলেবাস',
   'Create Test': 'টেস্ট তৈরি',
   'Exam History': 'পরীক্ষার ইতিহাস',
   Performance: 'পারফরম্যান্স',
