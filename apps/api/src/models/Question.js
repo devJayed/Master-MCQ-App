@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { hasRichLanguage } = require('../utils/richContent');
 const { optionContentError } = require('../utils/optionContent');
+const { explanationContentError } = require('../utils/explanationContent');
 const {
   QUESTION_TYPES,
   VALID_QUESTION_TYPES,
@@ -174,8 +175,12 @@ questionSchema.pre('validate', function validateTypeSpecificContent(next) {
       );
       if (error) return next(new Error(error));
     }
-    if (!this.explanation?.bn?.trim())
-      return next(new Error('Bangla explanation is required for MCQ questions.'));
+    const explanationError = explanationContentError(
+      this.explanation,
+      this.explanationContent,
+      this.status === 'published'
+    );
+    if (explanationError) return next(new Error(explanationError));
     return next();
   }
   if (!WRITTEN_QUESTION_TYPES.includes(this.questionType)) return next();
@@ -206,7 +211,6 @@ questionSchema.pre('validate', function validatePublishedBilingualContent(next) 
     (!this.question?.en && !hasRichLanguage(this.questionContent, 'en'))
   )
     missing.push('question');
-  if (!this.explanation?.bn || !this.explanation?.en) missing.push('explanation');
   if (missing.length)
     return next(
       new Error(

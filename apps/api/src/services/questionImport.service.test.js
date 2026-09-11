@@ -46,6 +46,22 @@ function mockImportStore(t) {
   });
 }
 
+test('Excel preview accepts rich-only explanations and rejects duplicate representations', async (t) => {
+  mockImportStore(t);
+  const row = importRow();
+  for (const language of ['BN', 'EN']) {
+    row[`Explanation ${language}`] = '';
+    row[`Explanation Rich ${language}`] = JSON.stringify([{ type: 'math', text: 'x^2' }]);
+  }
+  const preview = await validateImportRows(workbookBuffer(row));
+  assert.deepEqual(preview.invalidRows, []);
+  assert.equal(preview.validRows.length, 1);
+  assert.equal(preview.validRows[0].payload.explanation.bn, '');
+  row['Explanation BN'] = 'Duplicate';
+  const invalid = await validateImportRows(workbookBuffer(row));
+  assert.equal(invalid.invalidRows.length, 1);
+});
+
 test('Excel rich-only options survive preview and insertion without translation or plain fallbacks', async (t) => {
   mockImportStore(t);
   const preview = await validateImportRows(workbookBuffer(importRow()));

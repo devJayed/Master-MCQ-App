@@ -8,6 +8,7 @@ const { fillMissingEnglish } = require('./translation.service');
 const { removeEmptySubtopic } = require('./questionHierarchy.service');
 const { hasRichLanguage, richLanguageToText } = require('../utils/richContent');
 const { optionContentError } = require('../utils/optionContent');
+const { explanationContentError } = require('../utils/explanationContent');
 const {
   QUESTION_TYPES,
   WRITTEN_QUESTION_TYPES,
@@ -429,9 +430,12 @@ const validateQuestionRow = async (rawRow, excelRowNumber, syllabusIndex) => {
 
   const isMcq = normalizedRow.questionType === QUESTION_TYPES.MCQ;
   const isWritten = WRITTEN_QUESTION_TYPES.includes(normalizedRow.questionType);
-  const explanationBn = normalizedRow.explanationBn;
-  if (isMcq && !explanationBn) {
-    errors.push(rowError(excelRowNumber, 'Explanation BN', 'Bangla explanation is required.'));
+  if (isMcq) {
+    const error = explanationContentError(
+      { bn: normalizedRow.explanationBn, en: normalizedRow.explanationEn },
+      rich?.explanationContent
+    );
+    if (error) errors.push(rowError(excelRowNumber, 'Explanation BN / Explanation Rich BN', error));
   }
 
   const answer = normalizedRow.correctAnswer;
@@ -741,7 +745,10 @@ const buildQuestionImportTemplate = async () => {
       'Options A-D',
       'For each option, choose plain BN/EN or rich BN/EN. Do not mix representations across languages. Bangla is required in the chosen representation; English is optional for drafts and required for published rows. Rich options are not auto-translated.',
     ],
-    ['Explanation', 'Plain Bangla remains required. Rich columns are optional enhancements.'],
+    [
+      'Explanation',
+      'Provide plain text or rich content per language, never both. Bangla is required; published MCQs also require English.',
+    ],
     [
       'Written answers',
       'Types 1-4 require either Answer BN or Answer Rich BN. English answer fields are optional.',
@@ -809,8 +816,14 @@ const persistValidatedRows = async (validRows, userId) => {
       )
         throw new Error(`Published questions require ${language.toUpperCase()} question content.`);
     }
-    if (normalized.questionType === QUESTION_TYPES.MCQ && !normalized.explanation?.bn?.trim())
-      throw new Error('Bangla explanation is required for MCQ questions.');
+    if (normalized.questionType === QUESTION_TYPES.MCQ) {
+      const error = explanationContentError(
+        normalized.explanation,
+        normalized.explanationContent,
+        normalized.status === 'published'
+      );
+      if (error) throw new Error(error);
+    }
     for (const key of normalized.questionType === QUESTION_TYPES.MCQ ? OPTION_KEYS : []) {
       const option = normalized.options?.find((item) => item.key === key);
       const rich = normalized.optionContent?.find((item) => item.key === key);

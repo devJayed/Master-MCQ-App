@@ -50,6 +50,29 @@ const mcq = () => ({
   optionContent: keys.map((key) => ({ key, content: rich() })),
 });
 
+test('rich explanations replace plain explanations and require English only for publishing', async () => {
+  const payload = { ...mcq(), explanation: {}, explanationContent: rich(), status: 'published' };
+  await new Question(payload).validate();
+  payload.explanationContent.en = [];
+  await assert.rejects(new Question(payload).validate(), /English explanation/);
+  payload.status = 'draft';
+  await new Question(payload).validate();
+  payload.explanation.bn = 'Duplicate';
+  await assert.rejects(new Question(payload).validate(), /not both/);
+  payload.explanation = {};
+  payload.explanationContent.bn = [{ type: 'text', text: '   ' }];
+  await assert.rejects(new Question(payload).validate(), /Bangla explanation/);
+});
+
+test('published explanations can select different representations per language', async () => {
+  await new Question({
+    ...mcq(),
+    status: 'published',
+    explanation: { bn: 'Plain Bangla', en: '' },
+    explanationContent: { bn: [], en: rich().en },
+  }).validate();
+});
+
 test('accepts published rich-only options and independently chosen plain options', async () => {
   const payload = mcq();
   payload.status = 'published';

@@ -1,5 +1,6 @@
 const { hasRichLanguage } = require('../utils/richContent');
 const { optionContentError } = require('../utils/optionContent');
+const { explanationContentError } = require('../utils/explanationContent');
 
 function missing(value) {
   return !value || !value.trim();
@@ -72,9 +73,18 @@ async function fillMissingEnglish(
       question = await fillLocalizedValue(questionPayload.question, generated, 'question');
     }
   }
-  const explanation = targets.includes('explanation')
-    ? await fillLocalizedValue(questionPayload.explanation, generated, 'explanation')
-    : questionPayload.explanation;
+  let explanation = questionPayload.explanation;
+  if (targets.includes('explanation')) {
+    const content = questionPayload.explanationContent;
+    const rich = hasRichLanguage(content, 'bn') || hasRichLanguage(content, 'en');
+    const error = explanationContentError(
+      explanation,
+      content,
+      rich && questionPayload.status === 'published'
+    );
+    if (error) throw new Error(error);
+    if (!rich) explanation = await fillLocalizedValue(explanation, generated, 'explanation');
+  }
   let options = questionPayload.options;
   if (targets.includes('options')) {
     if (!Array.isArray(questionPayload.options) || questionPayload.options.length !== 4)
