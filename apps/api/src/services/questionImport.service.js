@@ -164,37 +164,21 @@ const buildSyllabusIndex = async () => {
 };
 
 const buildQuestionPayload = (row, chapter, topic, subtopic, rich) => {
-  const questionType = normalizeQuestionType(
-    getHeaderValue(row, ['Question Type', 'questionType', 'question_type'])
-  );
-  const questionBn = normalizeText(row['Question BN'] || row['Question_BN'] || row['Question BN ']);
-  const questionEn = normalizeText(row['Question EN'] || row['Question_EN'] || row['Question EN ']);
-  const explanationBn = normalizeText(
-    row['Explanation BN'] || row['Explanation_BN'] || row['Explanation BN ']
-  );
-  const explanationEn = normalizeText(
-    row['Explanation EN'] || row['Explanation_EN'] || row['Explanation EN ']
-  );
-  const difficulty = normalizeText(row.Difficulty || row.difficulty || 'medium').toLowerCase();
-  const sourceType = normalizeText(row['Source Type'] || row.sourceType || 'teacher').toLowerCase();
-  const status = normalizeText(row.Status || row.status || 'draft').toLowerCase();
+  const { questionType, questionBn, questionEn, explanationBn, explanationEn } = row;
+  const difficulty = row.difficulty || 'medium';
+  const sourceType = row.sourceType || 'teacher';
+  const status = row.status || 'draft';
 
   const options = OPTION_KEYS.map((key) => {
-    const bn = normalizeText(
-      row[`Option ${key} BN`] || row[`Option_${key}_BN`] || row[`Option ${key} BN `]
-    );
-    const en = normalizeText(
-      row[`Option ${key} EN`] || row[`Option_${key}_EN`] || row[`Option ${key} EN `]
-    );
+    const bn = row.optionBn(key);
+    const en = row.optionEn(key);
     return {
       key,
       text: { bn, en },
     };
   });
 
-  const correctAnswer = normalizeText(
-    row.CorrectAnswer || row['Correct Answer'] || row.correctAnswer || 'A'
-  ).toUpperCase();
+  const correctAnswer = row.correctAnswer;
 
   const payload = {
     chapterId: chapter._id,
@@ -213,13 +197,13 @@ const buildQuestionPayload = (row, chapter, topic, subtopic, rich) => {
     explanation: { bn: explanationBn, en: explanationEn },
     explanationContent: rich.explanationContent,
     answer: {
-      bn: normalizeText(getHeaderValue(row, ['Answer BN', 'Answer_BN'])),
-      en: normalizeText(getHeaderValue(row, ['Answer EN', 'Answer_EN'])),
+      bn: row.answerBn,
+      en: row.answerEn,
     },
     answerContent: rich.answerContent,
     difficulty: ACCEPTED_DIFFICULTY.includes(difficulty) ? difficulty : difficulty,
     sourceType: ACCEPTED_SOURCES.includes(sourceType) ? sourceType : sourceType,
-    tags: parseTags(row.Tags || row.tags || ''),
+    tags: parseTags(row.tags),
     status: ACCEPTED_STATUS.includes(status) ? status : 'draft',
     isDeleted: false,
     questionType,
@@ -524,7 +508,7 @@ const validateQuestionRow = async (rawRow, excelRowNumber, syllabusIndex) => {
       : false
   );
 
-  const payload = buildQuestionPayload(rawRow, chapter, topic, subtopic, rich);
+  const payload = buildQuestionPayload(normalizedRow, chapter, topic, subtopic, rich);
   const duplicateMessage = await findDuplicateQuestion(payload);
   if (duplicateMessage) {
     errors.push(rowError(excelRowNumber, 'Question BN', duplicateMessage));

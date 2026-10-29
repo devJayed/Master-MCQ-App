@@ -46,6 +46,35 @@ function mockImportStore(t) {
   });
 }
 
+test('preview preserves populated values with normalized column headers', async (t) => {
+  mockImportStore(t);
+  const row = importRow();
+  row['Correct Answer'] = 'C';
+  row['Source Type'] = 'board';
+  row.Difficulty = 'hard';
+  row.Tags = 'ICT|Board';
+  for (const key of optionKeys) {
+    for (const language of ['BN', 'EN']) {
+      delete row[`Option ${key} Rich ${language}`];
+      row[`Option ${key} ${language}`] = `Option ${key}`;
+    }
+  }
+  const expected = await validateImportRows(workbookBuffer(row));
+  assert.equal(expected.validRows.length, 1);
+  for (const header of [
+    (key) => key.toLowerCase(),
+    (key) => `  ${key.replaceAll(' ', '   ')}  `,
+    (key) => key.toLowerCase().replaceAll(' ', '_'),
+  ]) {
+    const changed = Object.fromEntries(
+      Object.entries(row).map(([key, value]) => [header(key), value])
+    );
+    const preview = await validateImportRows(workbookBuffer(changed));
+    assert.deepEqual(preview.invalidRows, []);
+    assert.deepEqual(preview.validRows, expected.validRows);
+  }
+});
+
 test('Excel preview accepts rich-only explanations and rejects duplicate representations', async (t) => {
   mockImportStore(t);
   const row = importRow();

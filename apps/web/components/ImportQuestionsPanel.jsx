@@ -11,22 +11,14 @@ import {
   Upload,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { API_URL } from '../lib/api';
+import { readImportResponse } from '../lib/import-response.mjs';
 import { useLanguage } from './LanguageProvider';
 
 const text = (language, bn, en) => (language === 'bn' ? bn : en);
 const number = (value, language) =>
   Number(value || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US');
-
-const parseError = async (response) => {
-  try {
-    const payload = await response.json();
-    return payload.message || 'Request failed.';
-  } catch {
-    return 'Request failed.';
-  }
-};
 
 export default function ImportQuestionsPanel({ basePath = '/moderator/questions' }) {
   const { language } = useLanguage();
@@ -37,8 +29,13 @@ export default function ImportQuestionsPanel({ basePath = '/moderator/questions'
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importSummary, setImportSummary] = useState(null);
+  const actionPending = useRef(false);
+  const fileInput = useRef(null);
+  const pending = busy || importing;
 
   const downloadTemplate = async () => {
+    if (actionPending.current) return;
+    actionPending.current = true;
     setBusy(true);
     setMessage('');
     setMessageTone('info');
@@ -46,7 +43,7 @@ export default function ImportQuestionsPanel({ basePath = '/moderator/questions'
       const response = await fetch(`${API_URL}/questions/import/template`, {
         credentials: 'include',
       });
-      if (!response.ok) throw new Error(await parseError(response));
+      if (!response.ok) await readImportResponse(response, { requireData: false });
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
@@ -65,11 +62,13 @@ export default function ImportQuestionsPanel({ basePath = '/moderator/questions'
       );
       setMessageTone('error');
     } finally {
+      actionPending.current = false;
       setBusy(false);
     }
   };
 
   const validateFile = async () => {
+    if (actionPending.current) return;
     if (!file) {
       setMessage(
         text(
@@ -82,6 +81,9 @@ export default function ImportQuestionsPanel({ basePath = '/moderator/questions'
       return;
     }
 
+    actionPending.current = true;
+    setPreview(null);
+    setImportSummary(null);
     setBusy(true);
     setMessage('');
     setMessageTone('info');
@@ -93,8 +95,7 @@ export default function ImportQuestionsPanel({ basePath = '/moderator/questions'
         body: form,
         credentials: 'include',
       });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.message || 'Validation failed.');
+      const payload = await readImportResponse(response);
       const result = payload.data || {};
       setPreview({
         totalRows: Number(result.totalRows || 0),
@@ -125,11 +126,13 @@ export default function ImportQuestionsPanel({ basePath = '/moderator/questions'
       setMessageTone('error');
       setPreview(null);
     } finally {
+      actionPending.current = false;
       setBusy(false);
     }
   };
 
   const importValidatedRows = async () => {
+    if (actionPending.current) return;
     if (!preview || !preview.rows.length) {
       setMessage(
         text(
@@ -153,6 +156,7 @@ export default function ImportQuestionsPanel({ basePath = '/moderator/questions'
       return;
     }
 
+    actionPending.current = true;
     setImporting(true);
     setMessage('');
     setMessageTone('info');
@@ -163,14 +167,14 @@ export default function ImportQuestionsPanel({ basePath = '/moderator/questions'
         body: JSON.stringify({ validatedRows: preview.rows }),
         credentials: 'include',
       });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.message || 'Import failed.');
+      const payload = await readImportResponse(response);
       setImportSummary({
         importedCount: payload.data?.importedCount || 0,
         message: payload.message || 'Import finished.',
       });
       setPreview(null);
       setFile(null);
+      if (fileInput.current) fileInput.current.value = '';
       setMessage(
         text(language, 'প্রশ্নগুলো সফলভাবে ইমপোর্ট হয়েছে।', 'Questions imported successfully.')
       );
@@ -179,6 +183,7 @@ export default function ImportQuestionsPanel({ basePath = '/moderator/questions'
       setMessage(error.message || text(language, 'ইমপোর্ট ব্যর্থ হয়েছে।', 'Import failed.'));
       setMessageTone('error');
     } finally {
+      actionPending.current = false;
       setImporting(false);
     }
   };
@@ -205,7 +210,11 @@ export default function ImportQuestionsPanel({ basePath = '/moderator/questions'
             )}
           </p>
         </div>
-        <button onClick={downloadTemplate} disabled={busy} className="btn btn-outline btn-primary">
+        <button
+          onClick={downloadTemplate}
+          disabled={pending}
+          className="btn btn-outline btn-primary"
+        >
           {busy ? <span className="loading loading-spinner loading-xs" /> : <Download size={16} />}{' '}
           {text(language, 'টেমপ্লেট ডাউনলোড করুন', 'Download template')}
         </button>
@@ -223,14 +232,19 @@ export default function ImportQuestionsPanel({ basePath = '/moderator/questions'
           </p>
         </div>
         <div className="flex flex-col gap-4 md:flex-row md:items-center">
-          <label className="btn btn-primary cursor-pointer">
+          <label
+            className={`btn btn-primary relative focus-within:outline focus-within:outline-2 ${pending ? 'btn-disabled' : 'cursor-pointer'}`}
+          >
             <Upload size={16} /> {text(language, 'Excel / CSV নির্বাচন করুন', 'Select Excel / CSV')}
             <input
               type="file"
+              ref={fileInput}
+              disabled={pending}
               accept=".xlsx,.xls,.csv"
-              className="hidden"
+              className="absolute inset-0 w-full cursor-pointer opacity-0"
               aria-label={text(language, 'ইমপোর্ট ফাইল নির্বাচন করুন', 'Choose import file')}
               onChange={(event) => {
+                if (actionPending.current) return;
                 setFile(event.target.files?.[0] || null);
                 setPreview(null);
                 setImportSummary(null);
@@ -243,7 +257,7 @@ export default function ImportQuestionsPanel({ basePath = '/moderator/questions'
               ? file.name
               : text(language, 'এখনো কোনো ফাইল নির্বাচন করা হয়নি', 'No file selected yet')}
           </span>
-          <button onClick={validateFile} disabled={busy || !file} className="btn btn-secondary">
+          <button onClick={validateFile} disabled={pending || !file} className="btn btn-secondary">
             {busy ? (
               <span className="loading loading-spinner loading-xs" />
             ) : (
@@ -253,7 +267,7 @@ export default function ImportQuestionsPanel({ basePath = '/moderator/questions'
           </button>
           <button
             onClick={importValidatedRows}
-            disabled={importing || !preview || preview.invalidRows > 0 || !preview.rows.length}
+            disabled={pending || !preview || preview.invalidRows > 0 || !preview.rows.length}
             className="btn btn-primary"
           >
             {importing ? (

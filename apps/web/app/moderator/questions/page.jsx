@@ -41,11 +41,15 @@ const QUESTION_TYPES = [
   ['4', 'উচ্চতর দক্ষতামূলক', 'Higher order'],
 ];
 const DIFFICULTIES = [
-  ['easy', 'সহজ', 'Easy'], ['medium', 'মাঝারি', 'Medium'], ['hard', 'কঠিন', 'Hard'],
+  ['easy', 'সহজ', 'Easy'],
+  ['medium', 'মাঝারি', 'Medium'],
+  ['hard', 'কঠিন', 'Hard'],
 ];
 const SOURCE_TYPES = [
-  ['board', 'বোর্ড', 'Board'], ['teacher', 'শিক্ষক', 'Teacher'],
-  ['model_test', 'মডেল টেস্ট', 'Model test'], ['practice', 'অনুশীলন', 'Practice'],
+  ['board', 'বোর্ড', 'Board'],
+  ['teacher', 'শিক্ষক', 'Teacher'],
+  ['model_test', 'মডেল টেস্ট', 'Model test'],
+  ['practice', 'অনুশীলন', 'Practice'],
   ['admission', 'ভর্তি পরীক্ষা', 'Admission'],
 ];
 const STATUS_OPTIONS = ['draft', 'published', 'archived'];
@@ -80,6 +84,7 @@ export default function ModeratorQuestions() {
     [loading, setLoading] = useState(true);
   const [previewQuestion, setPreviewQuestion] = useState(null);
   const [updatingStatusId, setUpdatingStatusId] = useState('');
+  const [updatingDifficultyId, setUpdatingDifficultyId] = useState('');
   const local = (value, fallback) =>
     value?.[language] ||
     (language === 'bn' ? value?.bn || value?.en : value?.en || value?.bn) ||
@@ -123,7 +128,20 @@ export default function ModeratorQuestions() {
     } finally {
       setLoading(false);
     }
-  }, [archived, chapterId, difficulty, language, page, pageSize, questionType, search, sourceType, status, subtopicId, topicId]);
+  }, [
+    archived,
+    chapterId,
+    difficulty,
+    language,
+    page,
+    pageSize,
+    questionType,
+    search,
+    sourceType,
+    status,
+    subtopicId,
+    topicId,
+  ]);
 
   useEffect(() => {
     api('/chapters')
@@ -150,7 +168,18 @@ export default function ModeratorQuestions() {
   }, [loadQuestions]);
   useEffect(() => {
     setPage(1);
-  }, [archived, chapterId, difficulty, pageSize, questionType, search, sourceType, status, subtopicId, topicId]);
+  }, [
+    archived,
+    chapterId,
+    difficulty,
+    pageSize,
+    questionType,
+    search,
+    sourceType,
+    status,
+    subtopicId,
+    topicId,
+  ]);
 
   const clearFilters = () => {
     setChapterId('');
@@ -201,6 +230,35 @@ export default function ModeratorQuestions() {
       await loadQuestions();
     } catch (e) {
       setError(e.message);
+    }
+  };
+
+  const updateQuestionDifficulty = async (question, nextDifficulty) => {
+    if (nextDifficulty === question.difficulty || updatingDifficultyId || updatingStatusId) return;
+    setUpdatingDifficultyId(question._id);
+    setNotice('');
+    setError('');
+    try {
+      await api(`/questions/${question._id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ difficulty: nextDifficulty }),
+      });
+      setQuestions((current) =>
+        current.map((item) =>
+          item._id === question._id ? { ...item, difficulty: nextDifficulty } : item
+        )
+      );
+      setNotice(
+        text(language, 'প্রশ্নের কঠিনতার স্তর আপডেট করা হয়েছে।', 'Question difficulty updated.')
+      );
+      await loadQuestions();
+    } catch (e) {
+      setError(
+        e.message ||
+          text(language, 'কঠিনতার স্তর আপডেট করা যায়নি।', 'Could not update difficulty.')
+      );
+    } finally {
+      setUpdatingDifficultyId('');
     }
   };
 
@@ -333,7 +391,9 @@ export default function ModeratorQuestions() {
           >
             <option value="">{text(language, 'সব সাবটপিক', 'All subtopics')}</option>
             {subtopics.map((item) => (
-              <option key={item._id} value={item._id}>{name(item)}</option>
+              <option key={item._id} value={item._id}>
+                {name(item)}
+              </option>
             ))}
           </select>
           <select
@@ -344,7 +404,9 @@ export default function ModeratorQuestions() {
           >
             <option value="">{text(language, 'সব ধরনের প্রশ্ন', 'All question types')}</option>
             {QUESTION_TYPES.map(([value, bn, en]) => (
-              <option key={value} value={value}>{text(language, bn, en)}</option>
+              <option key={value} value={value}>
+                {text(language, bn, en)}
+              </option>
             ))}
           </select>
           <select
@@ -355,7 +417,9 @@ export default function ModeratorQuestions() {
           >
             <option value="">{text(language, 'সব কঠিনতার স্তর', 'All difficulty levels')}</option>
             {DIFFICULTIES.map(([value, bn, en]) => (
-              <option key={value} value={value}>{text(language, bn, en)}</option>
+              <option key={value} value={value}>
+                {text(language, bn, en)}
+              </option>
             ))}
           </select>
           <select
@@ -366,7 +430,9 @@ export default function ModeratorQuestions() {
           >
             <option value="">{text(language, 'সব উৎস', 'All source types')}</option>
             {SOURCE_TYPES.map(([value, bn, en]) => (
-              <option key={value} value={value}>{text(language, bn, en)}</option>
+              <option key={value} value={value}>
+                {text(language, bn, en)}
+              </option>
             ))}
           </select>
           <select
@@ -431,100 +497,137 @@ export default function ModeratorQuestions() {
               </tr>
             </thead>
             <tbody>
-              {loading ? <TableRowsSkeleton rows={pageSize > 5 ? 5 : pageSize} columns={6} /> : questions.map((q) => (
-                <tr key={q._id}>
-                  <td>
-                    <div className="flex max-w-md items-start gap-2 text-sm font-semibold">
-                      {questionPrefix(q.questionType) && (
-                        <span className="shrink-0">{questionPrefix(q.questionType)}</span>
-                      )}
-                      <RichContent
-                        content={q.questionContent}
-                        fallback={q.question}
-                        language={language}
-                      />
-                    </div>
-                  </td>
-                  <td className="text-xs">
-                    {name(q.chapterId)}
-                    <br />
-                    <span className="text-base-content/50">
-                      {name(q.topicId)}
-                      {q.subtopicId ? ` / ${name(q.subtopicId)}` : ''}
-                    </span>
-                  </td>
-                  <td>
-                    <span className="badge badge-ghost">{label(q.difficulty)}</span>
-                  </td>
-                  <td>
-                    <select
-                      value={q.status}
-                      disabled={updatingStatusId === q._id}
-                      onChange={(event) => updateQuestionStatus(q, event.target.value)}
-                      className={`select select-sm min-w-28 ${q.status === 'published' ? 'select-success' : q.status === 'draft' ? 'select-warning' : 'select-bordered'}`}
-                      aria-label={text(language, 'প্রশ্নের অবস্থা পরিবর্তন করুন', 'Change question status')}
-                    >
-                      {STATUS_OPTIONS.map((value) => (
-                        <option key={value} value={value}>{label(value)}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <div className="min-w-32">
-                      <span className="text-xs font-semibold">{sourceLabel(q.sourceType)}</span>
-                      {!!q.tags?.length && (
-                        <div className="mt-1 flex max-w-48 flex-wrap gap-1">
-                          {q.tags.map((tag) => (
-                            <span key={tag} className="badge badge-ghost badge-sm">{tag}</span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => setPreviewQuestion(q)}
-                        title={text(language, 'মূল প্রশ্নের প্রিভিউ', 'Preview original question')}
-                        aria-label={text(language, 'মূল প্রশ্নের প্রিভিউ', 'Preview original question')}
+              {loading ? (
+                <TableRowsSkeleton rows={pageSize > 5 ? 5 : pageSize} columns={6} />
+              ) : (
+                questions.map((q) => (
+                  <tr key={q._id}>
+                    <td>
+                      <div className="flex max-w-md items-start gap-2 text-sm font-semibold">
+                        {questionPrefix(q.questionType) && (
+                          <span className="shrink-0">{questionPrefix(q.questionType)}</span>
+                        )}
+                        <RichContent
+                          content={q.questionContent}
+                          fallback={q.question}
+                          language={language}
+                        />
+                      </div>
+                    </td>
+                    <td className="text-xs">
+                      {name(q.chapterId)}
+                      <br />
+                      <span className="text-base-content/50">
+                        {name(q.topicId)}
+                        {q.subtopicId ? ` / ${name(q.subtopicId)}` : ''}
+                      </span>
+                    </td>
+                    <td>
+                      <select
+                        value={q.difficulty}
+                        disabled={Boolean(updatingDifficultyId || updatingStatusId)}
+                        onChange={(event) => updateQuestionDifficulty(q, event.target.value)}
+                        className={`select select-sm min-w-28 ${q.difficulty === 'easy' ? 'select-success' : q.difficulty === 'hard' ? 'select-error' : 'select-warning'}`}
+                        aria-label={text(
+                          language,
+                          'প্রশ্নের কঠিনতার স্তর পরিবর্তন করুন',
+                          'Change question difficulty'
+                        )}
+                        aria-busy={updatingDifficultyId === q._id}
                       >
-                        <Eye size={16} />
-                      </button>
-                      {archived ? (
+                        {DIFFICULTIES.map(([value, bn, en]) => (
+                          <option key={value} value={value}>
+                            {text(language, bn, en)}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        value={q.status}
+                        disabled={Boolean(updatingStatusId || updatingDifficultyId)}
+                        onChange={(event) => updateQuestionStatus(q, event.target.value)}
+                        className={`select select-sm min-w-28 ${q.status === 'published' ? 'select-success' : q.status === 'draft' ? 'select-warning' : 'select-bordered'}`}
+                        aria-label={text(
+                          language,
+                          'প্রশ্নের অবস্থা পরিবর্তন করুন',
+                          'Change question status'
+                        )}
+                      >
+                        {STATUS_OPTIONS.map((value) => (
+                          <option key={value} value={value}>
+                            {label(value)}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <div className="min-w-32">
+                        <span className="text-xs font-semibold">{sourceLabel(q.sourceType)}</span>
+                        {!!q.tags?.length && (
+                          <div className="mt-1 flex max-w-48 flex-wrap gap-1">
+                            {q.tags.map((tag) => (
+                              <span key={tag} className="badge badge-ghost badge-sm">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="flex justify-end gap-2">
                         <button
                           type="button"
-                          className="btn btn-outline btn-sm"
-                          onClick={() => restoreQuestion(q._id)}
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => setPreviewQuestion(q)}
+                          title={text(
+                            language,
+                            'মূল প্রশ্নের প্রিভিউ',
+                            'Preview original question'
+                          )}
+                          aria-label={text(
+                            language,
+                            'মূল প্রশ্নের প্রিভিউ',
+                            'Preview original question'
+                          )}
                         >
-                          <RotateCcw size={14} />
-                          {text(language, 'পুনরুদ্ধার', 'Restore')}
+                          <Eye size={16} />
                         </button>
-                      ) : (
-                        <>
-                          <Link
-                            href={`/moderator/questions/${q._id}/edit`}
-                            className="btn btn-ghost btn-sm"
-                            title={text(language, 'প্রশ্ন সম্পাদনা করুন', 'Edit question')}
-                            aria-label={text(language, 'প্রশ্ন সম্পাদনা করুন', 'Edit question')}
-                          >
-                            <Pencil size={16} />
-                          </Link>
+                        {archived ? (
                           <button
                             type="button"
-                            onClick={() => archiveQuestion(q._id)}
-                            className="btn btn-ghost btn-sm text-error"
-                            aria-label={text(language, 'প্রশ্ন আর্কাইভ করুন', 'Archive question')}
+                            className="btn btn-outline btn-sm"
+                            onClick={() => restoreQuestion(q._id)}
                           >
-                            <Trash2 size={14} />
+                            <RotateCcw size={14} />
+                            {text(language, 'পুনরুদ্ধার', 'Restore')}
                           </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        ) : (
+                          <>
+                            <Link
+                              href={`/moderator/questions/${q._id}/edit`}
+                              className="btn btn-ghost btn-sm"
+                              title={text(language, 'প্রশ্ন সম্পাদনা করুন', 'Edit question')}
+                              aria-label={text(language, 'প্রশ্ন সম্পাদনা করুন', 'Edit question')}
+                            >
+                              <Pencil size={16} />
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => archiveQuestion(q._id)}
+                              className="btn btn-ghost btn-sm text-error"
+                              aria-label={text(language, 'প্রশ্ন আর্কাইভ করুন', 'Archive question')}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
               {!loading && !questions.length && (
                 <tr>
                   <td colSpan="6" className="py-12 text-center text-base-content/60">
@@ -551,7 +654,11 @@ export default function ModeratorQuestions() {
           disabled={loading}
         />
       </section>
-      <QuestionPreviewModal question={previewQuestion} language={language} onClose={() => setPreviewQuestion(null)} />
+      <QuestionPreviewModal
+        question={previewQuestion}
+        language={language}
+        onClose={() => setPreviewQuestion(null)}
+      />
     </main>
   );
 }
